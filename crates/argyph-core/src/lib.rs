@@ -1,8 +1,13 @@
 #![forbid(unsafe_code)]
 
-// TODO: See crates/argyph-core/MODULE.md — owns Supervisor lifecycle, three-tier
-// indexing orchestration, configuration, background task spawning, and the Index facade.
+pub mod config;
+pub mod error;
+pub mod index;
+pub mod supervisor;
+pub mod tiers;
 
-/// Orchestrates runtime lifecycle: boots the index, runs the three-tier pipeline,
-/// spawns background work, and owns graceful shutdown.
-pub trait Supervisor {}
+pub use config::Config;
+pub use error::{CoreError, Result};
+pub use index::{Index, IndexStatus};
+pub use supervisor::{FsWatcher, Supervisor};
+pub use tiers::TierState;
