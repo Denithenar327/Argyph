@@ -1,0 +1,31 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/argyph",
+    "crates/argyph-core",
+    "crates/argyph-fs",
+    "crates/argyph-parse",
+    "crates/argyph-graph",
+    "crates/argyph-embed",
+    "crates/argyph-store",
+    "crates/argyph-pack",
+    "crates/argyph-mcp",
+    "crates/argyph-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/Ezzy1630/argyph"
+authors = ["Ezzy1630"]
+
+[workspace.dependencies]
+thiserror = "2"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "warn"

@@ -1,0 +1,19 @@
+[package]
+name = "argyph"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+argyph-cli = { path = "../argyph-cli" }
+argyph-mcp = { path = "../argyph-mcp" }
+argyph-core = { path = "../argyph-core" }
+
+[[bin]]
+name = "argyph"
+path = "src/main.rs"

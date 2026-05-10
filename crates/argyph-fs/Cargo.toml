@@ -1,0 +1,17 @@
+[package]
+name = "argyph-fs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+thiserror.workspace = true
+
+[lib]
+name = "argyph_fs"
+path = "src/lib.rs"
