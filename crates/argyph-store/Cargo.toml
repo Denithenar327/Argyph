@@ -11,6 +11,15 @@ workspace = true
 
 [dependencies]
 thiserror.workspace = true
+argyph-fs = { path = "../argyph-fs" }
+rusqlite = { version = "0.32", features = ["bundled"] }
+async-trait = "0.1"
+camino = "1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt", "macros"] }
+tempfile = "3"
+blake3 = "1"
 
 [lib]
 name = "argyph_store"
