@@ -11,6 +11,8 @@ workspace = true
 
 [dependencies]
 thiserror.workspace = true
+clap = { version = "4", features = ["derive"] }
+tracing = "0.1"
 
 [lib]
 name = "argyph_cli"

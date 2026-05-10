@@ -11,8 +11,9 @@ workspace = true
 
 [dependencies]
 argyph-cli = { path = "../argyph-cli" }
-argyph-mcp = { path = "../argyph-mcp" }
-argyph-core = { path = "../argyph-core" }
+clap = { version = "4", features = ["derive"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [[bin]]
 name = "argyph"
