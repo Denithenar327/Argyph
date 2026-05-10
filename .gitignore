@@ -1,0 +1,83 @@
+# --- Rust ---
+/target/
+**/target/
+Cargo.lock.bak
+*.rs.bk
+*.pdb
+
+# --- Node (for the npm wrapper package) ---
+node_modules/
+npm/node_modules/
+npm/bin/argyph-*-bin
+npm/dist/
+*.tgz
+.npmrc
+
+# --- OS ---
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# --- Editors / IDEs ---
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.zed/
+.cursor/
+
+# --- Argyph runtime artifacts (the on-disk index) ---
+# These should never be committed; they're rebuilt by the server.
+.argyph/
+
+# --- Local caches / models ---
+.cache/
+models/
+*.onnx
+*.gguf
+
+# --- Logs ---
+*.log
+argyph.log
+*.log.*
+
+# --- Coverage / profiling ---
+*.profraw
+*.profdata
+tarpaulin-report.html
+lcov.info
+coverage/
+
+# --- Benchmarks output ---
+criterion/
+
+# --- Build artifacts from cargo-dist ---
+dist/
+
+# --- DXT bundle output ---
+*.dxt
+
+# --- Environment files (never commit secrets) ---
+.env
+.env.local
+.env.*.local
+
+# --- Cowork / scratch (NEVER commit these) ---
+audit.jsonl
+.audit-key
+outputs/
+uploads/
+.claude/
+
+# --- Miscellaneous ---
+*.tmp
+tmp/
+scratch/
+
+# --- Local-only documentation (kept on disk for reference, not pushed) ---
+/docs/

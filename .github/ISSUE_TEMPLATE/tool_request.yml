@@ -1,0 +1,65 @@
+name: New MCP tool request
+description: Propose a new MCP tool to add to Argyph's surface.
+title: "tool: "
+labels: ["mcp-tool", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this when proposing a new MCP tool. Fill out the contract below; this becomes the spec the implementation is reviewed against.
+  - type: input
+    id: name
+    attributes:
+      label: Tool name
+      description: snake_case verb-first, e.g. `get_call_graph`
+    validations:
+      required: true
+  - type: dropdown
+    id: tier
+    attributes:
+      label: Minimum index tier required
+      options:
+        - Tier 0 (filesystem)
+        - Tier 1 (symbol graph)
+        - Tier 2 (embeddings)
+        - Tier 0+1
+        - None
+    validations:
+      required: true
+  - type: textarea
+    id: purpose
+    attributes:
+      label: Purpose
+      description: What problem does this tool solve for the agent? What query does it answer?
+    validations:
+      required: true
+  - type: textarea
+    id: request-schema
+    attributes:
+      label: Request schema
+      description: JSON shape, with field types and defaults. See docs/tools-reference.md for format.
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: response-schema
+    attributes:
+      label: Response schema
+      description: JSON shape, with field types and defaults.
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: example
+    attributes:
+      label: End-to-end example
+      description: A realistic example request and response.
+    validations:
+      required: true
+  - type: textarea
+    id: errors
+    attributes:
+      label: Error codes
+      description: Which stable error codes can this tool return?
+    validations:
+      required: true

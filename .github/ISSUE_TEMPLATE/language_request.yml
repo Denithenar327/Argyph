@@ -1,0 +1,40 @@
+name: Language pack request
+description: Request tree-sitter support for a new programming language.
+title: "lang: add support for "
+labels: ["language-pack", "triage"]
+body:
+  - type: input
+    id: language
+    attributes:
+      label: Language
+      description: e.g. Go, Kotlin, Swift
+    validations:
+      required: true
+  - type: input
+    id: tree-sitter
+    attributes:
+      label: tree-sitter grammar
+      description: Link to the tree-sitter grammar (crates.io or GitHub) and a recommended version.
+    validations:
+      required: true
+  - type: textarea
+    id: symbols
+    attributes:
+      label: Symbol kinds to extract
+      description: Which symbol kinds matter for this language? (function, class/struct, method, etc.) Reference the SymbolKind enum in docs/tools-reference.md.
+    validations:
+      required: true
+  - type: textarea
+    id: imports
+    attributes:
+      label: Import resolution notes
+      description: How does this language resolve imports? Any module-path heuristics we'd need.
+    validations:
+      required: false
+  - type: textarea
+    id: fixtures
+    attributes:
+      label: Test fixture suggestions
+      description: Small, well-known OSS projects in this language we could use as integration fixtures.
+    validations:
+      required: false
