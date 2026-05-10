@@ -11,6 +11,10 @@ workspace = true
 
 [dependencies]
 thiserror.workspace = true
+camino = "1"
+blake3 = { version = "1", features = ["rayon"] }
+ignore = "0.4"
+rayon = "1"
 
 [lib]
 name = "argyph_fs"
