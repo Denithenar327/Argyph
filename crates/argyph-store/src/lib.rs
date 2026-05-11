@@ -3,6 +3,7 @@
 mod error;
 mod migration;
 pub mod schema;
+pub mod search;
 mod sqlite;
 
 use argyph_fs::FileEntry;
@@ -13,6 +14,7 @@ use argyph_parse::types::{Chunk, Symbol};
 use camino::Utf8Path;
 
 pub use error::{Result, StoreError};
+pub use search::{HybridSearchResult, HitSource, SearchFilter, SearchHit, VectorEntry};
 pub use sqlite::SqliteStore;
 
 /// Persists file metadata, symbols, chunks, edges, and embedding vectors.
@@ -70,6 +72,43 @@ pub trait Store: Send + Sync {
 
     /// Return a hierarchical outline of all symbols defined in a file.
     async fn get_symbol_outline(&self, file: &Utf8Path) -> Result<Vec<SymbolOutline>>;
+
+    /// Store embedding vectors for chunks. Existing vectors for the same
+    /// `chunk_id` (and model) are replaced.
+    async fn upsert_vectors(&self, vectors: &[VectorEntry]) -> Result<()>;
+
+    /// Vector similarity search using cosine similarity. Returns the top `k`
+    /// nearest neighbors optionally filtered by `filter`.
+    async fn search_vectors(
+        &self,
+        query_vec: &[f32],
+        k: usize,
+        filter: &SearchFilter,
+    ) -> Result<Vec<(String, f32)>>;
+
+    /// Full-text search via FTS5 BM25. Returns top `limit` results with scores.
+    async fn search_text_bm25(
+        &self,
+        query: &str,
+        limit: usize,
+        filter: &SearchFilter,
+    ) -> Result<Vec<(String, f32)>>;
+
+    /// Hybrid search combining BM25 scores and vector similarity via
+    /// reciprocal rank fusion (RRF).
+    async fn search_hybrid(
+        &self,
+        query: &str,
+        query_vec: &[f32],
+        k: usize,
+        filter: &SearchFilter,
+    ) -> Result<HybridSearchResult>;
+
+    /// Return chunk IDs that don't have vectors yet for the given model.
+    async fn missing_vectors(&self, model: &str) -> Result<Vec<String>>;
+
+    /// Fetch chunk texts for the given chunk IDs.
+    async fn get_chunk_texts(&self, chunk_ids: &[String]) -> Result<Vec<(String, String)>>;
 
     /// Flush and close the store. The store may not be used after calling this.
     async fn close(&self) -> Result<()> {
@@ -680,5 +719,348 @@ mod tests {
         store.upsert_symbols(&[]).await.unwrap();
         store.upsert_chunks(&[]).await.unwrap();
         store.upsert_edges(&[]).await.unwrap();
+    }
+
+    // ---- Vector / search tests ----
+
+    fn make_test_vector(dim: usize, value: f32) -> Vec<f32> {
+        vec![value; dim]
+    }
+
+    fn make_vec_entry(chunk_id: &str, vector: Vec<f32>, model: &str) -> VectorEntry {
+        VectorEntry {
+            chunk_id: chunk_id.to_string(),
+            dimension: vector.len(),
+            vector,
+            model: model.to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn upsert_vectors_stores_and_retrieves() {
+        let store = open_mem();
+        let c = make_chunk("src/a.rs", "fn add() {}", ChunkKind::FunctionBody, 0, 12);
+        let cid = c.id.to_string();
+        store.upsert_chunks(&[c]).await.unwrap();
+
+        let vec1 = make_test_vector(4, 0.5);
+        store
+            .upsert_vectors(&[make_vec_entry(&cid, vec1.clone(), "test-model")])
+            .await
+            .unwrap();
+
+        // Search with a similar vector should return this chunk
+        let query = vec![0.5; 4];
+        let hits = store
+            .search_vectors(&query, 1, &SearchFilter::default())
+            .await
+            .unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].0, cid);
+        // Cosine similarity of two identical normalized vectors = 1.0
+        assert!((hits[0].1 - 1.0).abs() < 0.001);
+    }
+
+    #[tokio::test]
+    async fn upsert_vectors_replaces_existing() {
+        let store = open_mem();
+        let c = make_chunk("src/a.rs", "fn a() {}", ChunkKind::FunctionBody, 0, 10);
+        let cid = c.id.to_string();
+        store.upsert_chunks(&[c]).await.unwrap();
+
+        store
+            .upsert_vectors(&[make_vec_entry(&cid, make_test_vector(3, 1.0), "m")])
+            .await
+            .unwrap();
+        store
+            .upsert_vectors(&[make_vec_entry(&cid, make_test_vector(3, -1.0), "m")])
+            .await
+            .unwrap();
+
+        // Query similar to -1.0 should have high cosine similarity
+        let hits = store
+            .search_vectors(&vec![-1.0; 3], 1, &SearchFilter::default())
+            .await
+            .unwrap();
+        assert_eq!(hits.len(), 1);
+        assert!((hits[0].1 - 1.0).abs() < 0.001);
+    }
+
+    #[tokio::test]
+    async fn search_vectors_returns_top_k() {
+        let store = open_mem();
+        // Use orthogonal vectors to ensure distinct cosine similarities
+        let vecs = [
+            (vec![1.0_f32, 0.0, 0.0], "mod0.rs"),
+            (vec![0.0_f32, 1.0, 0.0], "mod1.rs"),
+            (vec![0.0_f32, 0.0, 1.0], "mod2.rs"),
+        ];
+        for (v, file) in &vecs {
+            let c = make_chunk(file, &format!("fn f_{file}() {{}}"), ChunkKind::FunctionBody, 0, 12);
+            let cid = c.id.to_string();
+            store.upsert_chunks(&[c]).await.unwrap();
+            store
+                .upsert_vectors(&[make_vec_entry(&cid, v.clone(), "m")])
+                .await
+                .unwrap();
+        }
+
+        let query = vec![0.95_f32, 0.3, 0.0];
+        let hits = store
+            .search_vectors(&query, 2, &SearchFilter::default())
+            .await
+            .unwrap();
+        assert_eq!(hits.len(), 2);
+        // The first vector [1,0,0] is closest to [0.95, 0.3, 0]
+        assert!(hits[0].1 > hits[1].1);
+    }
+
+    #[tokio::test]
+    async fn search_text_bm25_finds_matching_chunks() {
+        let store = open_mem();
+        let c1 = make_chunk(
+            "src/main.rs",
+            "let greeting = compute_hello_world();",
+            ChunkKind::TopLevel,
+            0,
+            35,
+        );
+        let c2 = make_chunk(
+            "src/lib.rs",
+            "fn unrelated() { return 42; }",
+            ChunkKind::FunctionBody,
+            0,
+            25,
+        );
+        let cid1 = c1.id.to_string();
+        store.upsert_chunks(&[c1, c2]).await.unwrap();
+
+        let hits = store
+            .search_text_bm25("greeting", 10, &SearchFilter::default())
+            .await
+            .unwrap();
+        assert!(!hits.is_empty());
+        assert_eq!(hits[0].0, cid1);
+    }
+
+    #[tokio::test]
+    async fn search_text_bm25_no_match_returns_empty() {
+        let store = open_mem();
+        let c = make_chunk(
+            "src/a.rs",
+            "let x = 1;",
+            ChunkKind::TopLevel,
+            0,
+            10,
+        );
+        store.upsert_chunks(&[c]).await.unwrap();
+
+        let hits = store
+            .search_text_bm25("zzzznonexistent", 10, &SearchFilter::default())
+            .await
+            .unwrap();
+        assert!(hits.is_empty());
+    }
+
+    #[tokio::test]
+    async fn search_text_bm25_respects_limit() {
+        let store = open_mem();
+        for i in 0..5 {
+            let c = make_chunk(
+                &format!("src/f{i}.rs"),
+                &format!("fn f{i}() {{ let x = test_{i}; }}"),
+                ChunkKind::FunctionBody,
+                0,
+                30,
+            );
+            store.upsert_chunks(&[c]).await.unwrap();
+        }
+
+        let hits = store
+            .search_text_bm25("test", 3, &SearchFilter::default())
+            .await
+            .unwrap();
+        assert_eq!(hits.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn search_hybrid_returns_combined_results() {
+        let store = open_mem();
+        let _dim = 3;
+
+        // Create multiple chunks: some with vectors, some without
+        let c1 = make_chunk("src/a.rs", "greeting hello world", ChunkKind::TopLevel, 0, 20);
+        let c2 = make_chunk("src/b.rs", "compute sum of numbers", ChunkKind::FunctionBody, 0, 22);
+        let c3 = make_chunk("src/c.rs", "greeting response handler", ChunkKind::TopLevel, 0, 25);
+
+        let cid1 = c1.id.to_string();
+        let cid2 = c2.id.to_string();
+        let cid3 = c3.id.to_string();
+
+        store.upsert_chunks(&[c1, c2, c3]).await.unwrap();
+
+        store
+            .upsert_vectors(&[
+                make_vec_entry(&cid1, vec![1.0, 0.0, 0.0], "m"),
+                make_vec_entry(&cid2, vec![0.0, 1.0, 0.0], "m"),
+                make_vec_entry(&cid3, vec![0.0, 0.0, 1.0], "m"),
+            ])
+            .await
+            .unwrap();
+
+        // Query: "greeting" text + vector close to [1, 0, 0]
+        let result = store
+            .search_hybrid(
+                "greeting",
+                &[1.0, 0.0, 0.0],
+                5,
+                &SearchFilter::default(),
+            )
+            .await
+            .unwrap();
+
+        assert!(!result.hits.is_empty(), "hybrid search should return hits");
+        assert_eq!(result.total_embedded, 3);
+        assert_eq!(result.total_chunks, 3);
+
+        // c1 (greeting + matching vector) should rank highest
+        assert!(
+            result.hits.iter().any(|h| h.chunk_id == cid1),
+            "c1 should be in results"
+        );
+    }
+
+    #[tokio::test]
+    async fn search_hybrid_handles_empty_vector_store() {
+        let store = open_mem();
+        let c = make_chunk(
+            "src/a.rs",
+            "fn hello() { world(); }",
+            ChunkKind::FunctionBody,
+            0,
+            22,
+        );
+        store.upsert_chunks(&[c]).await.unwrap();
+
+        let result = store
+            .search_hybrid(
+                "hello",
+                &[1.0_f32; 4],
+                5,
+                &SearchFilter::default(),
+            )
+            .await
+            .unwrap();
+
+        // Should still work using BM25 only
+        assert!(!result.hits.is_empty());
+        assert_eq!(result.total_embedded, 0);
+        assert_eq!(result.total_chunks, 1);
+    }
+
+    #[tokio::test]
+    async fn missing_vectors_returns_unembedded_chunks() {
+        let store = open_mem();
+        let c1 = make_chunk("src/a.rs", "fn a() {}", ChunkKind::FunctionBody, 0, 10);
+        let c2 = make_chunk("src/b.rs", "fn b() {}", ChunkKind::FunctionBody, 0, 10);
+        let cid1 = c1.id.to_string();
+        let cid2 = c2.id.to_string();
+        store.upsert_chunks(&[c1, c2]).await.unwrap();
+
+        // No vectors yet — both should be missing
+        let missing = store.missing_vectors("m").await.unwrap();
+        assert_eq!(missing.len(), 2);
+        assert!(missing.contains(&cid1));
+        assert!(missing.contains(&cid2));
+
+        // Now embed one
+        store
+            .upsert_vectors(&[make_vec_entry(&cid1, make_test_vector(3, 0.0), "m")])
+            .await
+            .unwrap();
+
+        let missing = store.missing_vectors("m").await.unwrap();
+        assert_eq!(missing.len(), 1);
+        assert_eq!(missing[0], cid2);
+    }
+
+    #[tokio::test]
+    async fn missing_vectors_respects_model() {
+        let store = open_mem();
+        let c = make_chunk("src/a.rs", "fn a() {}", ChunkKind::FunctionBody, 0, 10);
+        let cid = c.id.to_string();
+        store.upsert_chunks(&[c]).await.unwrap();
+
+        // Embed with model A
+        store
+            .upsert_vectors(&[make_vec_entry(&cid, make_test_vector(3, 0.0), "model-a")])
+            .await
+            .unwrap();
+
+        // model-a has it covered
+        assert!(store.missing_vectors("model-a").await.unwrap().is_empty());
+
+        // model-b does not
+        assert_eq!(store.missing_vectors("model-b").await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn filter_by_language_in_vector_search() {
+        let store = open_mem();
+        let c_rust = make_chunk("src/a.rs", "fn a() {}", ChunkKind::FunctionBody, 0, 10);
+        let mut c_py = make_chunk("src/b.rs", "fn b() {}", ChunkKind::FunctionBody, 0, 10);
+        c_py.language = Language::Python;
+        let cid_rust = c_rust.id.to_string();
+        store.upsert_chunks(&[c_rust, c_py]).await.unwrap();
+
+        store
+            .upsert_vectors(&[make_vec_entry(&cid_rust, make_test_vector(3, 1.0), "m")])
+            .await
+            .unwrap();
+
+        let rust_filter = SearchFilter {
+            language: Some("Rust".to_string()),
+            ..Default::default()
+        };
+        let hits = store
+            .search_vectors(&vec![1.0; 3], 10, &rust_filter)
+            .await
+            .unwrap();
+        assert_eq!(hits.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn filter_by_language_in_bm25_search() {
+        let store = open_mem();
+        let c_rust = make_chunk("src/a.rs", "greeting fn a() {}", ChunkKind::FunctionBody, 0, 15);
+        let mut c_py = make_chunk("src/b.py", "greeting def b(): pass", ChunkKind::FunctionBody, 0, 20);
+        c_py.language = Language::Python;
+        store.upsert_chunks(&[c_rust, c_py]).await.unwrap();
+
+        let py_filter = SearchFilter {
+            language: Some("Python".to_string()),
+            ..Default::default()
+        };
+        let hits = store
+            .search_text_bm25("greeting", 10, &py_filter)
+            .await
+            .unwrap();
+        assert_eq!(hits.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn empty_vector_search_on_empty_store() {
+        let store = open_mem();
+        let hits = store
+            .search_vectors(&vec![0.5; 4], 10, &SearchFilter::default())
+            .await
+            .unwrap();
+        assert!(hits.is_empty());
+    }
+
+    #[tokio::test]
+    async fn empty_upsert_vectors_noop() {
+        let store = open_mem();
+        store.upsert_vectors(&[]).await.unwrap();
     }
 }

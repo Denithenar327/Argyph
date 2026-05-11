@@ -1,7 +1,9 @@
 use std::future::Future;
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, SystemTime};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::Duration;
 
+use argyph_embed::config::EmbedConfig;
+use argyph_embed::{self, Embedder, Provider};
 use camino::Utf8PathBuf;
 use tokio::sync::RwLock;
 use tokio::task::JoinSet;
@@ -14,7 +16,7 @@ use argyph_store::Store;
 use crate::config::Config;
 use crate::error::Result;
 use crate::index::Index;
-use crate::tiers::{self, TierState};
+use crate::tiers::{self, Tier2Progress, TierState};
 
 pub struct Supervisor {
     #[allow(dead_code)]
@@ -25,6 +27,7 @@ pub struct Supervisor {
     shutdown: CancellationToken,
     store: Arc<dyn Store>,
     watcher_active: bool,
+    embedder: Arc<OnceLock<Arc<dyn Embedder>>>,
 }
 
 impl Supervisor {
@@ -37,14 +40,17 @@ impl Supervisor {
             Arc::new(sqlite)
         };
 
-        let index = Arc::new(Index::new(Arc::clone(&store)));
+        let embedder = build_embedder();
+        let embedder_for_t2 = Arc::clone(&embedder);
+
+        let index = Arc::new(Index::new(Arc::clone(&store), Arc::clone(&embedder)));
         let tier_state = Arc::new(RwLock::new(TierState::Offline));
 
-        tiers::run_tier0(&root, &*store).await?;
+        let entries = tiers::run_tier0(&root, &*store).await?;
+        let files_indexed = entries.len();
 
-        let now = SystemTime::now();
-        *tier_state.write().await = TierState::Tier0 { ready_at: now };
-        tracing::info!(ready_at = ?now, "Tier 0 ready");
+        *tier_state.write().await = TierState::Tier0 { files_indexed };
+        tracing::info!(files_indexed, "Tier 0 ready");
 
         let tier_state_clone = Arc::clone(&tier_state);
         let root_clone = root.clone();
@@ -58,18 +64,21 @@ impl Supervisor {
             shutdown: CancellationToken::new(),
             store,
             watcher_active: false,
+            embedder,
         };
 
+        // Channel to signal Tier 2 start after Tier 1 finishes
+        let (tier2_start_tx, tier2_start_rx) = tokio::sync::oneshot::channel::<()>();
+
+        // Tier 1 — parse symbols, create chunks
         let root_for_t1 = root.clone();
         let store_for_t1 = Arc::clone(&store_clone);
         let tier_for_t1 = Arc::clone(&tier_state_clone);
         sup.spawn(async move {
             match tiers::run_tier1(&root_for_t1, &*store_for_t1).await {
                 Ok(symbol_count) => {
-                    let now = SystemTime::now();
                     *tier_for_t1.write().await = TierState::Tier1 {
-                        ready_at: now,
-                        symbol_count,
+                        symbols_indexed: symbol_count as usize,
                     };
                     tracing::info!(symbol_count, "Tier 1 ready");
                 }
@@ -77,7 +86,48 @@ impl Supervisor {
                     tracing::error!(error = %e, "Tier 1 failed");
                 }
             }
+            // Signal Tier 2 that chunks exist (or Tier 1 failed — Tier 2 exits quickly either way)
+            let _ = tier2_start_tx.send(());
         });
+
+        // Tier 2 — background semantic embedding (waits for Tier 1, then polls)
+        {
+            let store_for_t2 = Arc::clone(&store_clone);
+            let tier_for_t2 = Arc::clone(&tier_state_clone);
+            let (progress_tx, mut progress_rx) =
+                tokio::sync::mpsc::unbounded_channel::<Tier2Progress>();
+
+            // Progress-tracking task — reads progress events, updates tier_state
+            let tier_prog = Arc::clone(&tier_for_t2);
+            sup.spawn(async move {
+                while let Some(prog) = progress_rx.recv().await {
+                    *tier_prog.write().await = TierState::Tier2 {
+                        embedded: prog.embedded,
+                        total: prog.total,
+                    };
+                }
+            });
+
+            // Tier 2 embedding task — waits for Tier 1, then runs embedding loop
+            sup.spawn(async move {
+                let _ = tier2_start_rx.await;
+
+                let Some(embedder) = embedder_for_t2.get().cloned() else {
+                    return;
+                };
+
+                tracing::info!("Tier 2 starting semantic embedding");
+                match tiers::run_tier2(store_for_t2, embedder, progress_tx).await {
+                    Ok(()) => {
+                        *tier_for_t2.write().await = TierState::Ready;
+                        tracing::info!("Tier 2 ready — all chunks embedded");
+                    }
+                    Err(e) => {
+                        tracing::error!(%e, "Tier 2 embedding failed");
+                    }
+                }
+            });
+        }
 
         let mut sup = sup;
         let watcher = FileWatcher::notify_watcher(&root_clone, Duration::from_millis(500)).ok();
@@ -114,6 +164,10 @@ impl Supervisor {
 
     pub fn index(&self) -> Arc<Index> {
         Arc::clone(&self.index)
+    }
+
+    pub fn embedder(&self) -> Option<Arc<dyn Embedder>> {
+        self.embedder.get().cloned()
     }
 
     pub async fn get_tier_state(&self) -> TierState {
@@ -153,6 +207,35 @@ impl Supervisor {
             }
         });
     }
+}
+
+fn build_embedder() -> Arc<OnceLock<Arc<dyn Embedder>>> {
+    let slot = Arc::new(OnceLock::new());
+    let slot_clone = Arc::clone(&slot);
+    tokio::task::spawn(async move {
+        let result = tokio::task::spawn_blocking(move || {
+            let provider = if std::env::var("OPENAI_API_KEY").is_ok() {
+                Provider::OpenAi
+            } else {
+                Provider::Local
+            };
+            let config = EmbedConfig::default();
+            argyph_embed::build(provider, config)
+        })
+        .await;
+        match result {
+            Ok(Ok(e)) => {
+                let _ = slot_clone.set(e);
+            }
+            Ok(Err(err)) => {
+                tracing::warn!(%err, "embedding unavailable — semantic search disabled");
+            }
+            Err(join_err) => {
+                tracing::warn!(%join_err, "embedder build panicked — semantic search disabled");
+            }
+        }
+    });
+    slot
 }
 
 #[cfg(test)]
@@ -231,11 +314,8 @@ mod tests {
 
         let state = sup.get_tier_state().await;
         match state {
-            TierState::Tier0 { ready_at } => {
-                let age = SystemTime::now()
-                    .duration_since(ready_at)
-                    .unwrap_or_default();
-                assert!(age.as_secs() < 5, "ready_at is too old: {age:?}");
+            TierState::Tier0 { files_indexed } => {
+                assert!(files_indexed > 0, "expected at least 1 file indexed");
             }
             other => panic!("expected Tier 0, got {other:?}"),
         }

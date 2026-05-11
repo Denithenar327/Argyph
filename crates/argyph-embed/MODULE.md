@@ -8,7 +8,7 @@ Convert text chunks into vector embeddings. Abstracts over a bundled local ONNX 
 
 - The `Embedder` trait.
 - ONNX runtime integration via the `ort` crate.
-- The bundled local model (`bge-small-en-v1.5`, int8-quantized) — lazy download, SHA-256 verification, `~/.cache/argyph/models/` caching.
+- The bundled local model (`bge-small-en-v1.5`, FP32) — lazy download, SHA-256 verification, `~/.cache/argyph/models/` caching.
 - HTTP clients for remote providers, with batching, retries (exponential backoff), and provider-specific concurrency caps.
 - Tokenizer integration via the `tokenizers` crate (per-model tokenizer; bundled with model files).
 - Token counting for chunk-budgeted batching.
@@ -45,7 +45,7 @@ pub enum Provider {
     // v1.1: Gemini, Ollama
 }
 
-pub fn build(provider: Provider, config: &EmbedConfig) -> Result<Arc<dyn Embedder>>;
+pub fn build(provider: Provider, config: EmbedConfig) -> Result<Arc<dyn Embedder>>;
 
 pub struct ApiKey(/* redacted Display */);
 ```

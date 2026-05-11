@@ -13,6 +13,9 @@ pub enum CoreError {
 
     #[error("graph error: {0}")]
     Graph(#[from] argyph_graph::GraphError),
+
+    #[error("embedding error: {0}")]
+    Embed(String),
 }
 
 pub type Result<T> = std::result::Result<T, CoreError>;

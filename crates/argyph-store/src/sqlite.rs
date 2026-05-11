@@ -13,6 +13,9 @@ use argyph_parse::types::{ByteRange, Chunk, ChunkId, ChunkKind, Symbol, SymbolId
 
 use crate::error::Result;
 use crate::migration;
+use crate::search::{
+    HitSource, HybridSearchResult, SearchFilter, SearchHit, VectorEntry,
+};
 use crate::Store;
 
 pub struct SqliteStore {
@@ -406,6 +409,278 @@ impl Store for SqliteStore {
 
         Ok(roots)
     }
+
+    #[allow(clippy::expect_used)]
+    async fn upsert_vectors(&self, vectors: &[VectorEntry]) -> Result<()> {
+        if vectors.is_empty() {
+            return Ok(());
+        }
+
+        let conn = self.conn.lock().expect("mutex poisoned");
+        let mut stmt = conn.prepare_cached(
+            "INSERT OR REPLACE INTO vectors (chunk_id, vector, model, dimension)
+             VALUES (?1, ?2, ?3, ?4)",
+        )?;
+
+        for entry in vectors {
+            let blob = vector_to_blob(&entry.vector);
+            stmt.execute(params![
+                entry.chunk_id.as_str(),
+                blob,
+                entry.model.as_str(),
+                entry.dimension as i64,
+            ])?;
+        }
+
+        Ok(())
+    }
+
+    #[allow(clippy::expect_used)]
+    async fn search_vectors(
+        &self,
+        query_vec: &[f32],
+        k: usize,
+        filter: &SearchFilter,
+    ) -> Result<Vec<(String, f32)>> {
+        let conn = self.conn.lock().expect("mutex poisoned");
+
+        let (sql, params_vec): (String, Vec<Box<dyn rusqlite::types::ToSql>>) =
+            build_vector_search_sql(query_vec.len(), filter);
+
+        let params_refs: Vec<&dyn rusqlite::types::ToSql> =
+            params_vec.iter().map(|p| p.as_ref()).collect();
+
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map(params_refs.as_slice(), |row| {
+            let chunk_id: String = row.get(0)?;
+            let vector_blob: Vec<u8> = row.get(1)?;
+            let file: String = row.get(2)?;
+            let text: String = row.get(3)?;
+            Ok((chunk_id, vector_blob, file, text))
+        })?;
+
+        let query_norm_inv = 1.0 / norm(query_vec).max(f32::MIN_POSITIVE);
+
+        let mut results: Vec<_> = rows
+            .filter_map(|r| r.ok())
+            .filter_map(|(cid, blob, _file, _text)| {
+                let stored_vec = blob_to_vector(&blob)?;
+                let stored_norm_inv = 1.0 / norm(&stored_vec).max(f32::MIN_POSITIVE);
+                let cosine = dot(query_vec, &stored_vec) * query_norm_inv * stored_norm_inv;
+                Some((cid, cosine))
+            })
+            .collect();
+
+        results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        results.truncate(k);
+
+        Ok(results)
+    }
+
+    #[allow(clippy::expect_used)]
+    async fn search_text_bm25(
+        &self,
+        query: &str,
+        limit: usize,
+        filter: &SearchFilter,
+    ) -> Result<Vec<(String, f32)>> {
+        let conn = self.conn.lock().expect("mutex poisoned");
+
+        let (sql, filter_params): (String, Vec<Box<dyn rusqlite::types::ToSql>>) =
+            build_bm25_sql(limit, filter);
+
+        let mut all_params: Vec<Box<dyn rusqlite::types::ToSql>> =
+            vec![Box::new(query.to_string())];
+        all_params.extend(filter_params);
+        let params_refs: Vec<&dyn rusqlite::types::ToSql> =
+            all_params.iter().map(|p| p.as_ref()).collect();
+
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map(params_refs.as_slice(), |row| {
+            let chunk_id: String = row.get(0)?;
+            let score: f64 = row.get(1)?;
+            Ok((chunk_id, score as f32))
+        })?;
+
+        let mut results = Vec::with_capacity(limit);
+        for row in rows {
+            match row {
+                Ok((id, score)) => results.push((id, score)),
+                Err(e) => return Err(e.into()),
+            }
+        }
+
+        Ok(results)
+    }
+
+    #[allow(clippy::expect_used)]
+    async fn search_hybrid(
+        &self,
+        query: &str,
+        query_vec: &[f32],
+        k: usize,
+        filter: &SearchFilter,
+    ) -> Result<HybridSearchResult> {
+        let bm25_limit = k.max(100);
+        let _vec_limit = k.max(100);
+
+        let (bm25_hits, vector_hits, total_embedded, total_chunks) = {
+            let conn = self.conn.lock().expect("mutex poisoned");
+
+            let total_chunks: usize = conn
+                .query_row("SELECT COUNT(*) FROM chunks", [], |r| r.get::<_, i64>(0))
+                .map(|n| n as usize)
+                .unwrap_or(0);
+
+            let total_embedded: usize = conn
+                .query_row("SELECT COUNT(*) FROM vectors", [], |r| r.get::<_, i64>(0))
+                .map(|n| n as usize)
+                .unwrap_or(0);
+
+            let (bm25_sql, bm25_filter_params): (String, Vec<Box<dyn rusqlite::types::ToSql>>) =
+                build_bm25_sql(bm25_limit, filter);
+            let mut bm25_all_params: Vec<Box<dyn rusqlite::types::ToSql>> =
+                vec![Box::new(query.to_string())];
+            bm25_all_params.extend(bm25_filter_params);
+            let bm25_refs: Vec<&dyn rusqlite::types::ToSql> =
+                bm25_all_params.iter().map(|p| p.as_ref()).collect();
+
+            let mut bm25_stmt = conn.prepare(&bm25_sql)?;
+            let bm25_rows = bm25_stmt.query_map(bm25_refs.as_slice(), |row| {
+                let chunk_id: String = row.get(0)?;
+                let score: f64 = row.get(1)?;
+                Ok((chunk_id, score as f32))
+            })?;
+            let bm25_hits: Vec<(String, f32)> = bm25_rows.filter_map(|r| r.ok()).collect();
+
+            let (vec_sql, vec_params): (String, Vec<Box<dyn rusqlite::types::ToSql>>) =
+                build_vector_search_sql(query_vec.len(), filter);
+            let vec_refs: Vec<&dyn rusqlite::types::ToSql> =
+                vec_params.iter().map(|p| p.as_ref()).collect();
+
+            let mut vec_stmt = conn.prepare(&vec_sql)?;
+            let vec_rows = vec_stmt.query_map(vec_refs.as_slice(), |row| {
+                let chunk_id: String = row.get(0)?;
+                let vector_blob: Vec<u8> = row.get(1)?;
+                Ok((chunk_id, vector_blob))
+            })?;
+
+            let query_norm_inv = 1.0 / norm(query_vec).max(f32::MIN_POSITIVE);
+            let vector_hits: Vec<(String, f32)> = vec_rows
+                .filter_map(|r| r.ok())
+                .filter_map(|(cid, blob)| {
+                    let stored_vec = blob_to_vector(&blob)?;
+                    let stored_norm_inv = 1.0 / norm(&stored_vec).max(f32::MIN_POSITIVE);
+                    let cosine =
+                        dot(query_vec, &stored_vec) * query_norm_inv * stored_norm_inv;
+                    Some((cid, cosine))
+                })
+                .collect();
+
+            (bm25_hits, vector_hits, total_embedded, total_chunks)
+        };
+
+        let fused = crate::search::reciprocal_rank_fusion(&bm25_hits, &vector_hits, k);
+
+        let conn = self.conn.lock().expect("mutex poisoned");
+        let mut hits = Vec::with_capacity(fused.len());
+        for (chunk_id, score) in &fused {
+            let (text, file) = chunk_text_and_file(&conn, chunk_id)?;
+            let source = if in_both(&bm25_hits, &vector_hits, chunk_id) {
+                HitSource::Hybrid
+            } else if bm25_hits.iter().any(|(id, _)| id == chunk_id) {
+                HitSource::Bm25
+            } else {
+                HitSource::Vector
+            };
+
+            hits.push(SearchHit {
+                chunk_id: chunk_id.clone(),
+                chunk_text: text,
+                file,
+                score: *score,
+                source,
+            });
+        }
+
+        Ok(HybridSearchResult {
+            hits,
+            total_embedded,
+            total_chunks,
+        })
+    }
+
+    #[allow(clippy::expect_used)]
+    async fn missing_vectors(&self, model: &str) -> Result<Vec<String>> {
+        let conn = self.conn.lock().expect("mutex poisoned");
+        let mut stmt = conn.prepare(
+            "SELECT c.id FROM chunks c
+             WHERE c.id NOT IN (SELECT v.chunk_id FROM vectors v WHERE v.model = ?1)",
+        )?;
+        let rows = stmt.query_map(params![model], |row| row.get::<_, String>(0))?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row?);
+        }
+        Ok(out)
+    }
+
+    #[allow(clippy::expect_used)]
+    async fn get_chunk_texts(&self, chunk_ids: &[String]) -> Result<Vec<(String, String)>> {
+        if chunk_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let conn = self.conn.lock().expect("mutex poisoned");
+        let placeholders: Vec<String> = (1..=chunk_ids.len())
+            .map(|i| format!("?{i}"))
+            .collect();
+        let sql = format!(
+            "SELECT id, text FROM chunks WHERE id IN ({})",
+            placeholders.join(",")
+        );
+        let mut stmt = conn.prepare(&sql)?;
+        let params: Vec<&dyn rusqlite::types::ToSql> = chunk_ids
+            .iter()
+            .map(|s| s as &dyn rusqlite::types::ToSql)
+            .collect();
+        let rows = stmt.query_map(params.as_slice(), |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+        let mut out = Vec::with_capacity(chunk_ids.len());
+        for row in rows {
+            out.push(row?);
+        }
+        Ok(out)
+    }
+}
+
+// ---------------------------------------------------------------
+// Vector helpers
+// ---------------------------------------------------------------
+
+fn vector_to_blob(vec: &[f32]) -> Vec<u8> {
+    vec.iter()
+        .flat_map(|f| f32::to_le_bytes(*f))
+        .collect()
+}
+
+fn blob_to_vector(blob: &[u8]) -> Option<Vec<f32>> {
+    let chunks = blob.chunks_exact(4);
+    let vec: Vec<f32> = chunks
+        .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+        .collect();
+    if vec.is_empty() && !blob.is_empty() {
+        return None;
+    }
+    Some(vec)
+}
+
+fn dot(a: &[f32], b: &[f32]) -> f32 {
+    a.iter().zip(b.iter()).map(|(x, y)| x * y).sum()
+}
+
+fn norm(v: &[f32]) -> f32 {
+    v.iter().map(|x| x * x).sum::<f32>().sqrt()
 }
 
 // ---------------------------------------------------------------
@@ -746,4 +1021,104 @@ fn str_to_language(s: &str) -> Option<Language> {
         "Markdown" => Some(Language::Markdown),
         _ => None,
     }
+}
+
+// ---------------------------------------------------------------
+// Search / vector query builders
+// ---------------------------------------------------------------
+
+fn build_bm25_sql(
+    limit: usize,
+    filter: &SearchFilter,
+) -> (String, Vec<Box<dyn rusqlite::types::ToSql>>) {
+    let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+    let mut conditions = Vec::new();
+
+    if let Some(ref lang) = filter.language {
+        conditions.push(format!("c.language = ?{}", params.len() + 2));
+        params.push(Box::new(lang.clone()));
+    }
+    if let Some(ref glob) = filter.paths_glob {
+        conditions.push(format!("c.file GLOB ?{}", params.len() + 2));
+        params.push(Box::new(glob.clone()));
+    }
+    if let Some(ref glob) = filter.exclude_glob {
+        conditions.push(format!("c.file NOT GLOB ?{}", params.len() + 2));
+        params.push(Box::new(glob.clone()));
+    }
+
+    let where_clause = if conditions.is_empty() {
+        String::new()
+    } else {
+        format!(" AND {}", conditions.join(" AND "))
+    };
+
+    let sql = format!(
+        "SELECT c.id, rank \
+         FROM chunks_fts \
+         JOIN chunks c ON c.rowid = chunks_fts.rowid \
+         WHERE chunks_fts MATCH ?1 \
+         {where_clause} \
+         ORDER BY rank \
+         LIMIT {limit}"
+    );
+
+    (sql, params)
+}
+
+fn build_vector_search_sql(
+    _dimension: usize,
+    filter: &SearchFilter,
+) -> (String, Vec<Box<dyn rusqlite::types::ToSql>>) {
+    let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+    let mut conditions = Vec::new();
+
+    if let Some(ref lang) = filter.language {
+        conditions.push(format!("c.language = ?{}", params.len() + 1));
+        params.push(Box::new(lang.clone()));
+    }
+    if let Some(ref glob) = filter.paths_glob {
+        conditions.push(format!("c.file GLOB ?{}", params.len() + 1));
+        params.push(Box::new(glob.clone()));
+    }
+    if let Some(ref glob) = filter.exclude_glob {
+        conditions.push(format!("c.file NOT GLOB ?{}", params.len() + 1));
+        params.push(Box::new(glob.clone()));
+    }
+
+    let where_clause = if conditions.is_empty() {
+        String::new()
+    } else {
+        format!(" WHERE {}", conditions.join(" AND "))
+    };
+
+    let sql = format!(
+        "SELECT v.chunk_id, v.vector, c.file, c.text \
+         FROM vectors v \
+         JOIN chunks c ON c.id = v.chunk_id \
+         {where_clause}"
+    );
+
+    (sql, params)
+}
+
+fn chunk_text_and_file(
+    conn: &Connection,
+    chunk_id: &str,
+) -> Result<(String, String)> {
+    let mut stmt =
+        conn.prepare_cached("SELECT text, file FROM chunks WHERE id = ?1")?;
+    stmt.query_row(params![chunk_id], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })
+    .map_err(|e| e.into())
+}
+
+fn in_both(
+    bm25_hits: &[(String, f32)],
+    vector_hits: &[(String, f32)],
+    chunk_id: &str,
+) -> bool {
+    bm25_hits.iter().any(|(id, _)| id == chunk_id)
+        && vector_hits.iter().any(|(id, _)| id == chunk_id)
 }

@@ -11,7 +11,7 @@ pub use config::Config;
 pub use error::{CoreError, Result};
 pub use index::{
     GitInfo, Index, IndexStatus, LanguageSummary, RepoOverview, SearchFilter, SearchHit,
-    SearchResult,
+    SearchResult, SemanticHit, SemanticResult,
 };
 pub use supervisor::Supervisor;
 pub use tiers::TierState;

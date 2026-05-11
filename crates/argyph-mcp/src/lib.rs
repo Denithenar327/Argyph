@@ -62,6 +62,18 @@ impl ArgyphMcp {
     }
 
     #[tool(
+        name = "search_semantic",
+        description = "Hybrid BM25 + vector search over AST-aware chunks with index_coverage reporting."
+    )]
+    async fn search_semantic(
+        &self,
+        Parameters(req): Parameters<tools::search_semantic::Request>,
+    ) -> Json<tools::search_semantic::Response> {
+        let response = tools::search_semantic::handle(&self.supervisor, &self.root, req).await;
+        Json(response)
+    }
+
+    #[tool(
         name = "find_definition",
         description = "Locate the definition of a symbol by name. May return multiple definitions. Requires Tier 1."
     )]

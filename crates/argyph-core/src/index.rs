@@ -1,9 +1,10 @@
 use std::collections::HashMap;
 use std::io::BufRead;
 use std::process::Command;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::SystemTime;
 
+use argyph_embed::Embedder;
 use argyph_fs::ChangedPath;
 use argyph_fs::FileEntry;
 use argyph_graph::edge::Edge;
@@ -14,7 +15,7 @@ use argyph_store::Store;
 use camino::{Utf8Path, Utf8PathBuf};
 use regex::Regex;
 
-use crate::error::Result;
+use crate::error::{CoreError, Result};
 
 pub struct SearchFilter {
     pub paths_glob: Option<Vec<String>>,
@@ -52,17 +53,35 @@ pub struct RepoOverview {
     pub git: Option<GitInfo>,
 }
 
+pub struct SemanticHit {
+    pub chunk_id: String,
+    pub chunk_text: String,
+    pub file: String,
+    pub score: f32,
+    pub source: String,
+}
+
+pub struct SemanticResult {
+    pub hits: Vec<SemanticHit>,
+    pub total_embedded: usize,
+    pub total_chunks: usize,
+}
+
 /// The single domain facade that UI layers consume.
 ///
 /// All queries go through `Index`; no caller outside `argyph-core` touches the
 /// underlying [`Store`] directly.
 pub struct Index {
     store: Arc<dyn Store>,
+    embedder: Arc<OnceLock<Arc<dyn Embedder>>>,
 }
 
 impl Index {
-    pub(crate) fn new(store: Arc<dyn Store>) -> Self {
-        Self { store }
+    pub(crate) fn new(
+        store: Arc<dyn Store>,
+        embedder: Arc<OnceLock<Arc<dyn Embedder>>>,
+    ) -> Self {
+        Self { store, embedder }
     }
 
     pub fn protocol_version() -> &'static str {
@@ -147,6 +166,44 @@ impl Index {
         let truncated = total > max as usize;
 
         Ok(SearchResult { hits, truncated })
+    }
+
+    pub async fn search_semantic(
+        &self,
+        query: &str,
+        k: usize,
+        filter: Option<&argyph_store::search::SearchFilter>,
+    ) -> Result<SemanticResult> {
+        let embedder = self
+            .embedder
+            .get()
+            .ok_or_else(|| CoreError::Embed("no embedder configured — cannot perform semantic search".into()))?;
+
+        let query_vec = embedder
+            .embed_query(query)
+            .await
+            .map_err(|e| CoreError::Embed(format!("{e}")))?;
+
+        let result = self
+            .store
+            .search_hybrid(query, &query_vec, k, filter.unwrap_or(&Default::default()))
+            .await?;
+
+        Ok(SemanticResult {
+            hits: result
+                .hits
+                .into_iter()
+                .map(|h| SemanticHit {
+                    chunk_id: h.chunk_id,
+                    chunk_text: h.chunk_text,
+                    file: h.file,
+                    score: h.score,
+                    source: format!("{:?}", h.source).to_lowercase(),
+                })
+                .collect(),
+            total_embedded: result.total_embedded,
+            total_chunks: result.total_chunks,
+        })
     }
 
     pub async fn overview(&self, root: &Utf8Path, max_tree_depth: u64) -> Result<RepoOverview> {

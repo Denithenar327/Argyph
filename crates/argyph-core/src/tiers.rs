@@ -1,13 +1,17 @@
 use std::collections::HashSet;
+use std::sync::Arc;
 use std::time::SystemTime;
 
+use argyph_embed::Embedder;
 use argyph_fs::{self, ChangeKind, ChangedPath, FileEntry, Language, Walker};
 use argyph_graph::builder::DefaultGraphBuilder;
 use argyph_graph::GraphBuilder;
 use argyph_parse::DefaultParser;
 use argyph_parse::Parser;
+use argyph_store::search::VectorEntry;
 use argyph_store::Store;
 use camino::{Utf8Path, Utf8PathBuf};
+use tokio::sync::mpsc;
 
 use crate::error::Result;
 
@@ -15,16 +19,16 @@ use crate::error::Result;
 pub enum TierState {
     Offline,
     Tier0 {
-        ready_at: SystemTime,
+        files_indexed: usize,
     },
     Tier1 {
-        ready_at: SystemTime,
-        symbol_count: u64,
+        symbols_indexed: usize,
     },
     Tier2 {
-        ready_at: SystemTime,
-        embedded_count: u64,
+        embedded: usize,
+        total: usize,
     },
+    Ready,
 }
 
 use std::fmt;
@@ -35,6 +39,7 @@ impl fmt::Display for TierState {
             Self::Tier0 { .. } => write!(f, "tier0"),
             Self::Tier1 { .. } => write!(f, "tier1"),
             Self::Tier2 { .. } => write!(f, "tier2"),
+            Self::Ready => write!(f, "ready"),
         }
     }
 }
@@ -43,7 +48,7 @@ impl TierState {
     pub fn is_ready(&self) -> bool {
         matches!(
             self,
-            Self::Tier0 { .. } | Self::Tier1 { .. } | Self::Tier2 { .. }
+            Self::Tier0 { .. } | Self::Tier1 { .. } | Self::Tier2 { .. } | Self::Ready
         )
     }
 
@@ -52,14 +57,14 @@ impl TierState {
             Self::Offline => 0,
             Self::Tier0 { .. } => 1,
             Self::Tier1 { .. } => 2,
-            Self::Tier2 { .. } => 3,
+            Self::Tier2 { .. } | Self::Ready => 3,
         }
     }
 
     #[must_use]
     pub fn symbol_count(&self) -> u64 {
         match self {
-            Self::Tier1 { symbol_count, .. } => *symbol_count,
+            Self::Tier1 { symbols_indexed, .. } => *symbols_indexed as u64,
             _ => 0,
         }
     }
@@ -143,6 +148,84 @@ pub async fn run_tier1(root: &Utf8Path, store: &dyn Store) -> Result<u64> {
     );
 
     Ok(total_symbols)
+}
+
+/// Progress update emitted during Tier 2 embedding.
+#[derive(Debug, Clone)]
+pub struct Tier2Progress {
+    pub embedded: usize,
+    pub total: usize,
+}
+
+#[tracing::instrument(skip(store, embedder, progress_tx))]
+pub async fn run_tier2(
+    store: Arc<dyn Store>,
+    embedder: Arc<dyn Embedder>,
+    progress_tx: mpsc::UnboundedSender<Tier2Progress>,
+) -> Result<()> {
+    let model = embedder.model_id().to_string();
+    let dim = embedder.dimension();
+    let batch_size = 32;
+
+    tracing::info!(model = %model, dim, "Tier 2 embedding started");
+
+    loop {
+        let missing = store.missing_vectors(&model).await?;
+        if missing.is_empty() {
+            break;
+        }
+
+        let total = missing.len();
+        let mut done = 0usize;
+
+        for chunk_ids in missing.chunks(batch_size) {
+            let pairs = store.get_chunk_texts(chunk_ids).await?;
+
+            let chunk_order: Vec<&str> = chunk_ids.iter().map(|s| s.as_str()).collect();
+            let text_map: std::collections::HashMap<&str, &str> = pairs
+                .iter()
+                .map(|(id, text)| (id.as_str(), text.as_str()))
+                .collect();
+
+            let texts: Vec<String> = chunk_order
+                .iter()
+                .filter_map(|id| text_map.get(id).map(|t| t.to_string()))
+                .collect();
+
+            if texts.is_empty() {
+                done += chunk_ids.len();
+                let _ = progress_tx.send(Tier2Progress { embedded: done, total });
+                tokio::task::yield_now().await;
+                continue;
+            }
+
+            let embeddings = embedder
+                .embed(&texts)
+                .await
+                .map_err(|e| crate::CoreError::Embed(format!("{e}")))?;
+
+            let entries: Vec<VectorEntry> = chunk_ids
+                .iter()
+                .zip(embeddings.iter())
+                .map(|(id, vec)| VectorEntry {
+                    chunk_id: id.clone(),
+                    vector: vec.clone(),
+                    model: model.clone(),
+                    dimension: dim,
+                })
+                .collect();
+
+            store.upsert_vectors(&entries).await?;
+            done += chunk_ids.len();
+
+            let _ = progress_tx.send(Tier2Progress { embedded: done, total });
+
+            tokio::task::yield_now().await;
+        }
+    }
+
+    tracing::info!("Tier 2 embedding complete");
+    Ok(())
 }
 
 #[tracing::instrument(skip(store), fields(root = %root.as_str()))]
@@ -308,74 +391,62 @@ mod tests {
     fn tier_state_display() {
         assert_eq!(TierState::Offline.to_string(), "offline");
         assert_eq!(
-            TierState::Tier0 {
-                ready_at: SystemTime::UNIX_EPOCH
-            }
-            .to_string(),
+            TierState::Tier0 { files_indexed: 0 }.to_string(),
             "tier0"
         );
         assert_eq!(
             TierState::Tier1 {
-                ready_at: SystemTime::UNIX_EPOCH,
-                symbol_count: 100
+                symbols_indexed: 100
             }
             .to_string(),
             "tier1"
         );
         assert_eq!(
             TierState::Tier2 {
-                ready_at: SystemTime::UNIX_EPOCH,
-                embedded_count: 50
+                embedded: 25,
+                total: 50
             }
             .to_string(),
             "tier2"
         );
+        assert_eq!(TierState::Ready.to_string(), "ready");
     }
 
     #[test]
     fn tier_state_is_ready() {
         assert!(!TierState::Offline.is_ready());
-        assert!(TierState::Tier0 {
-            ready_at: SystemTime::now()
-        }
-        .is_ready());
+        assert!(TierState::Tier0 { files_indexed: 0 }.is_ready());
         assert!(TierState::Tier1 {
-            ready_at: SystemTime::now(),
-            symbol_count: 1
+            symbols_indexed: 1
         }
         .is_ready());
         assert!(TierState::Tier2 {
-            ready_at: SystemTime::now(),
-            embedded_count: 1
+            embedded: 1,
+            total: 2
         }
         .is_ready());
+        assert!(TierState::Ready.is_ready());
     }
 
     #[test]
     fn tier_number_progression() {
         assert_eq!(TierState::Offline.tier_number(), 0);
-        assert_eq!(
-            TierState::Tier0 {
-                ready_at: SystemTime::now()
-            }
-            .tier_number(),
-            1
-        );
+        assert_eq!(TierState::Tier0 { files_indexed: 0 }.tier_number(), 1);
         assert_eq!(
             TierState::Tier1 {
-                ready_at: SystemTime::now(),
-                symbol_count: 0
+                symbols_indexed: 0
             }
             .tier_number(),
             2
         );
         assert_eq!(
             TierState::Tier2 {
-                ready_at: SystemTime::now(),
-                embedded_count: 0
+                embedded: 0,
+                total: 0
             }
             .tier_number(),
             3
         );
+        assert_eq!(TierState::Ready.tier_number(), 3);
     }
 }
