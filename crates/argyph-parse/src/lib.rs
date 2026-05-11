@@ -1,9 +1,14 @@
 #![forbid(unsafe_code)]
 
-// TODO: See crates/argyph-parse/MODULE.md — owns tree-sitter parsing, language-pack
-// registry, per-language .scm queries, AST-aware chunking, and symbol extraction.
+mod chunker;
+mod error;
+pub mod languages;
+mod parser;
+pub mod types;
 
-/// Parses a source file with tree-sitter, extracting symbols, AST-aware chunks,
-/// and raw import statements. Language packs register their tree-sitter grammar
-/// and `.scm` queries at startup.
-pub trait Parser {}
+pub use chunker::{ast_chunks, char_split, fallback_chunks};
+pub use error::{ParseError, Result};
+pub use parser::{DefaultParser, Parser};
+pub use types::{
+    ByteRange, Chunk, ChunkId, ChunkKind, Import, ParsedFile, Symbol, SymbolId, SymbolKind,
+};

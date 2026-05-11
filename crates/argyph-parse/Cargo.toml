@@ -10,7 +10,17 @@ authors.workspace = true
 workspace = true
 
 [dependencies]
+argyph-fs = { path = "../argyph-fs" }
+blake3 = "1"
+camino = "1"
+tree-sitter = "0.26"
+tree-sitter-rust = "0.24"
+tree-sitter-typescript = "0.23"
+tree-sitter-python = "0.25"
 thiserror.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
 
 [lib]
 name = "argyph_parse"
