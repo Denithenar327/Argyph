@@ -13,6 +13,16 @@ pub enum TierState {
     Offline,
     /// File-level index complete — `search_text`, `pack_repo`, `read_file_range`.
     Tier0 { ready_at: SystemTime },
+    /// Symbol index complete — `find_definition`, `find_references`, graph queries.
+    Tier1 {
+        ready_at: SystemTime,
+        symbol_count: u64,
+    },
+    /// Embedding index complete — `search_semantic` at full coverage.
+    Tier2 {
+        ready_at: SystemTime,
+        embedded_count: u64,
+    },
 }
 
 impl fmt::Display for TierState {
@@ -20,6 +30,8 @@ impl fmt::Display for TierState {
         match self {
             Self::Offline => write!(f, "offline"),
             Self::Tier0 { .. } => write!(f, "tier0"),
+            Self::Tier1 { .. } => write!(f, "tier1"),
+            Self::Tier2 { .. } => write!(f, "tier2"),
         }
     }
 }
@@ -27,7 +39,20 @@ impl fmt::Display for TierState {
 impl TierState {
     /// Whether Tier 0 (or higher) is available.
     pub fn is_ready(&self) -> bool {
-        matches!(self, Self::Tier0 { .. })
+        matches!(
+            self,
+            Self::Tier0 { .. } | Self::Tier1 { .. } | Self::Tier2 { .. }
+        )
+    }
+
+    /// Minimum tier reached. Higher-numbered tiers imply lower ones.
+    pub fn tier_number(&self) -> u8 {
+        match self {
+            Self::Offline => 0,
+            Self::Tier0 { .. } => 1,
+            Self::Tier1 { .. } => 2,
+            Self::Tier2 { .. } => 3,
+        }
     }
 }
 
@@ -66,7 +91,6 @@ pub async fn run_tier0(root: &camino::Utf8Path, store: &dyn Store) -> Result<Vec
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
-    use std::time::SystemTime;
 
     #[test]
     fn tier_state_display() {
@@ -78,6 +102,22 @@ mod tests {
             .to_string(),
             "tier0"
         );
+        assert_eq!(
+            TierState::Tier1 {
+                ready_at: SystemTime::UNIX_EPOCH,
+                symbol_count: 100
+            }
+            .to_string(),
+            "tier1"
+        );
+        assert_eq!(
+            TierState::Tier2 {
+                ready_at: SystemTime::UNIX_EPOCH,
+                embedded_count: 50
+            }
+            .to_string(),
+            "tier2"
+        );
     }
 
     #[test]
@@ -87,5 +127,43 @@ mod tests {
             ready_at: SystemTime::now()
         }
         .is_ready());
+        assert!(TierState::Tier1 {
+            ready_at: SystemTime::now(),
+            symbol_count: 1
+        }
+        .is_ready());
+        assert!(TierState::Tier2 {
+            ready_at: SystemTime::now(),
+            embedded_count: 1
+        }
+        .is_ready());
+    }
+
+    #[test]
+    fn tier_number_progression() {
+        assert_eq!(TierState::Offline.tier_number(), 0);
+        assert_eq!(
+            TierState::Tier0 {
+                ready_at: SystemTime::now()
+            }
+            .tier_number(),
+            1
+        );
+        assert_eq!(
+            TierState::Tier1 {
+                ready_at: SystemTime::now(),
+                symbol_count: 0
+            }
+            .tier_number(),
+            2
+        );
+        assert_eq!(
+            TierState::Tier2 {
+                ready_at: SystemTime::now(),
+                embedded_count: 0
+            }
+            .tier_number(),
+            3
+        );
     }
 }

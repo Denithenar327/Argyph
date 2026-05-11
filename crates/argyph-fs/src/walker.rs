@@ -131,6 +131,77 @@ impl Walker for IgnoreWalker {
     }
 }
 
+/// A simple walker that walks the filesystem without ignore-rule processing.
+///
+/// Useful as a polling fallback when `git` integration is not needed or when
+/// the `ARGYPH_WATCHER=poll` env var is set.
+pub struct PollingWalker {
+    max_file_size: u64,
+}
+
+impl PollingWalker {
+    pub fn new() -> Self {
+        Self {
+            max_file_size: DEFAULT_MAX_FILE_SIZE,
+        }
+    }
+
+    pub fn max_file_size(mut self, size: u64) -> Self {
+        self.max_file_size = size;
+        self
+    }
+}
+
+impl Default for PollingWalker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Walker for PollingWalker {
+    fn walk(&self, root: &Utf8Path) -> impl Iterator<Item = FileEntry> {
+        let root_abs = root
+            .canonicalize_utf8()
+            .unwrap_or_else(|_| root.to_path_buf());
+        let max_size = self.max_file_size;
+
+        ignore::WalkBuilder::new(root_abs.as_std_path())
+            .standard_filters(false)
+            .hidden(false)
+            .build()
+            .filter_map(move |entry| {
+                let entry = entry.ok()?;
+                if !entry.file_type().map(|ft| ft.is_file()).unwrap_or(false) {
+                    return None;
+                }
+                let rel = entry
+                    .path()
+                    .strip_prefix(root_abs.as_std_path())
+                    .ok()
+                    .and_then(|p| Utf8PathBuf::from_path_buf(p.to_path_buf()).ok())?;
+                let abs = root_abs.join(&rel);
+                let metadata = entry.metadata().ok()?;
+                let size = metadata.len();
+                if size > max_size {
+                    return None;
+                }
+                if !path::is_symlink_safe(&abs, &root_abs) {
+                    return None;
+                }
+                let file_hash = hash::hash_file(&abs).ok()?;
+                let lang = rel.extension().and_then(Language::from_extension);
+                let modified = metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH);
+                Some(FileEntry {
+                    path: rel,
+                    hash: file_hash,
+                    language: lang,
+                    size,
+                    modified,
+                })
+            })
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::needless_borrows_for_generic_args)]
 mod tests {

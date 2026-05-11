@@ -4,13 +4,15 @@ mod hash;
 mod language;
 mod path;
 mod walker;
+mod watcher;
 
 use camino::Utf8Path;
 use std::time::SystemTime;
 
 pub use hash::{hash_file, Blake3Hash};
 pub use language::Language;
-pub use walker::IgnoreWalker;
+pub use walker::{IgnoreWalker, PollingWalker};
+pub use watcher::{ChangeKind, ChangedPath, FsWatcher};
 
 /// Walks a repository root, yielding [`FileEntry`] records with path, hash,
 /// detected language, size, and modification time. Honors `.gitignore` and

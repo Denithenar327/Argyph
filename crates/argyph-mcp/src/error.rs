@@ -18,16 +18,27 @@ pub struct McpErrorBody {
 pub enum ErrorCode {
     IndexNotReady,
     InvalidPath,
+    OutOfBudget,
+    EmbedProviderError,
+    LanguageUnsupported,
+    SymbolNotFound,
+    SymbolAmbiguous,
     Internal,
 }
 
 impl std::fmt::Display for ErrorCode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::IndexNotReady => write!(f, "INDEX_NOT_READY"),
-            Self::InvalidPath => write!(f, "INVALID_PATH"),
-            Self::Internal => write!(f, "INTERNAL"),
-        }
+        let s = match self {
+            Self::IndexNotReady => "INDEX_NOT_READY",
+            Self::InvalidPath => "INVALID_PATH",
+            Self::OutOfBudget => "OUT_OF_BUDGET",
+            Self::EmbedProviderError => "EMBED_PROVIDER_ERROR",
+            Self::LanguageUnsupported => "LANGUAGE_UNSUPPORTED",
+            Self::SymbolNotFound => "SYMBOL_NOT_FOUND",
+            Self::SymbolAmbiguous => "SYMBOL_AMBIGUOUS",
+            Self::Internal => "INTERNAL",
+        };
+        write!(f, "{s}")
     }
 }
 
@@ -36,13 +47,12 @@ pub fn correlation_id() -> String {
 }
 
 pub fn index_not_ready() -> McpErrorBody {
-    let cid = correlation_id();
     McpErrorBody {
         code: ErrorCode::IndexNotReady,
         message: "Index not yet built; please retry".into(),
         retryable: true,
         retry_after_ms: Some(3000),
-        correlation_id: Some(cid),
+        correlation_id: Some(correlation_id()),
     }
 }
 

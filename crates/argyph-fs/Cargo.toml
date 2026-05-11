@@ -14,7 +14,10 @@ thiserror.workspace = true
 camino = "1"
 blake3 = { version = "1", features = ["rayon"] }
 ignore = "0.4"
+notify = { version = "8", default-features = false, features = ["macos_fsevent"] }
 rayon = "1"
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["sync"] }
 
 [lib]
 name = "argyph_fs"

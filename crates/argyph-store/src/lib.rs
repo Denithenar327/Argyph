@@ -27,6 +27,11 @@ pub trait Store: Send + Sync {
 
     /// Remove a file from the index.
     async fn delete_file(&self, path: &Utf8Path) -> Result<()>;
+
+    /// Flush and close the store. The store may not be used after calling this.
+    async fn close(&self) -> Result<()> {
+        Ok(())
+    }
 }
 
 #[cfg(test)]

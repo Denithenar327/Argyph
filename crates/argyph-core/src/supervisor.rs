@@ -7,6 +7,7 @@ use tokio::sync::RwLock;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 
+use argyph_fs::FsWatcher;
 use argyph_store::SqliteStore;
 use argyph_store::Store;
 
@@ -15,24 +16,17 @@ use crate::error::Result;
 use crate::index::Index;
 use crate::tiers::{self, TierState};
 
-/// Filesystem watcher placeholder — concrete integration lands in a later
-/// milestone.
-pub struct FsWatcher {
-    _private: (),
-}
-
 /// The single owner of runtime state.
 ///
 /// Boots the index, marks Tier 0 ready, and manages the background task pool.
 /// All long-lived tasks must be registered via [`Supervisor::spawn`].
-#[allow(dead_code)]
 pub struct Supervisor {
+    #[allow(dead_code)]
     config: Arc<Config>,
     index: Arc<Index>,
     tier_state: Arc<RwLock<TierState>>,
     tasks: Mutex<JoinSet<()>>,
     shutdown: CancellationToken,
-    #[allow(dead_code)]
     watcher: Option<FsWatcher>,
 }
 
@@ -63,14 +57,21 @@ impl Supervisor {
             "Tier 0 ready"
         );
 
+        let watcher = FsWatcher::new(&root).ok();
+
         Ok(Self {
             config: Arc::new(config),
             index,
             tier_state,
             tasks: Mutex::new(JoinSet::new()),
             shutdown: CancellationToken::new(),
-            watcher: None,
+            watcher,
         })
+    }
+
+    /// Whether the filesystem watcher is active.
+    pub fn watcher_active(&self) -> bool {
+        self.watcher.is_some()
     }
 
     /// Block until the supervisor shuts down. Useful for long-running server
@@ -97,6 +98,10 @@ impl Supervisor {
     pub async fn shutdown(self) -> Result<()> {
         tracing::info!("supervisor shutting down");
         self.shutdown.cancel();
+
+        if let Some(w) = self.watcher {
+            w.shutdown();
+        }
 
         let mut tasks = self.tasks.into_inner().unwrap_or_else(|e| e.into_inner());
         while let Some(result) = tasks.join_next().await {
@@ -179,7 +184,7 @@ mod tests {
     async fn boot_reaches_tier0_in_under_1_second() {
         let fixture = temp_fixture();
         let root = fixture.root;
-        let config = Config;
+        let config = Config::default();
         let deadline = tokio::time::Instant::now() + Duration::from_secs(1);
 
         let sup = Supervisor::boot(root, config).await.unwrap();
@@ -202,7 +207,7 @@ mod tests {
     #[tokio::test]
     async fn boot_sets_tier_state_fields() {
         let fixture = temp_fixture();
-        let config = Config;
+        let config = Config::default();
         let sup = Supervisor::boot(fixture.root, config).await.unwrap();
 
         let state = sup.get_tier_state().await;
@@ -222,14 +227,18 @@ mod tests {
     #[tokio::test]
     async fn shutdown_cleans_up_without_panicking() {
         let fixture = temp_fixture();
-        let sup = Supervisor::boot(fixture.root, Config).await.unwrap();
+        let sup = Supervisor::boot(fixture.root, Config::default())
+            .await
+            .unwrap();
         sup.shutdown().await.unwrap();
     }
 
     #[tokio::test]
     async fn spawn_registers_cancellation_aware_task() {
         let fixture = temp_fixture();
-        let sup = Supervisor::boot(fixture.root, Config).await.unwrap();
+        let sup = Supervisor::boot(fixture.root, Config::default())
+            .await
+            .unwrap();
 
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         sup.spawn(async move {

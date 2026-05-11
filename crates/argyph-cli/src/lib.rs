@@ -1,6 +1,8 @@
 #![forbid(unsafe_code)]
 
 mod cmds;
+pub mod output;
+pub mod progress;
 
 use clap::{Parser, Subcommand};
 use std::process::ExitCode;
