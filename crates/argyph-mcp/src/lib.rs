@@ -60,6 +60,78 @@ impl ArgyphMcp {
         let response = tools::search_text::handle(&self.supervisor, &self.root, req).await;
         Json(response)
     }
+
+    #[tool(
+        name = "find_definition",
+        description = "Locate the definition of a symbol by name. May return multiple definitions. Requires Tier 1."
+    )]
+    async fn find_definition(
+        &self,
+        Parameters(req): Parameters<tools::find_definition::Request>,
+    ) -> Json<tools::find_definition::Response> {
+        let response = tools::find_definition::handle(&self.supervisor, &self.root, req).await;
+        Json(response)
+    }
+
+    #[tool(
+        name = "find_references",
+        description = "Find reference sites for a symbol by symbol_id or name. Requires Tier 1."
+    )]
+    async fn find_references(
+        &self,
+        Parameters(req): Parameters<tools::find_references::Request>,
+    ) -> Json<tools::find_references::Response> {
+        let response = tools::find_references::handle(&self.supervisor, &self.root, req).await;
+        Json(response)
+    }
+
+    #[tool(
+        name = "get_callers",
+        description = "Find functions that call a given symbol. Grouped by caller with call sites. Requires Tier 1."
+    )]
+    async fn get_callers(
+        &self,
+        Parameters(req): Parameters<tools::get_callers::Request>,
+    ) -> Json<tools::get_callers::Response> {
+        let response = tools::get_callers::handle(&self.supervisor, &self.root, req).await;
+        Json(response)
+    }
+
+    #[tool(
+        name = "get_callees",
+        description = "Find functions called by a given symbol. Grouped by callee with call sites. Requires Tier 1."
+    )]
+    async fn get_callees(
+        &self,
+        Parameters(req): Parameters<tools::get_callees::Request>,
+    ) -> Json<tools::get_callees::Response> {
+        let response = tools::get_callees::handle(&self.supervisor, &self.root, req).await;
+        Json(response)
+    }
+
+    #[tool(
+        name = "get_imports",
+        description = "Find files imported by a file and files that import it. Requires Tier 1."
+    )]
+    async fn get_imports(
+        &self,
+        Parameters(req): Parameters<tools::get_imports::Request>,
+    ) -> Json<tools::get_imports::Response> {
+        let response = tools::get_imports::handle(&self.supervisor, &self.root, req).await;
+        Json(response)
+    }
+
+    #[tool(
+        name = "get_symbol_outline",
+        description = "Hierarchical outline of all symbols in a file with nested children. Requires Tier 1."
+    )]
+    async fn get_symbol_outline(
+        &self,
+        Parameters(req): Parameters<tools::get_symbol_outline::Request>,
+    ) -> Json<tools::get_symbol_outline::Response> {
+        let response = tools::get_symbol_outline::handle(&self.supervisor, &self.root, req).await;
+        Json(response)
+    }
 }
 
 #[tool_handler]

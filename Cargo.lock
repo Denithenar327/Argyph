@@ -119,6 +119,8 @@ name = "argyph-core"
 version = "0.1.0"
 dependencies = [
  "argyph-fs",
+ "argyph-graph",
+ "argyph-parse",
  "argyph-store",
  "camino",
  "regex",
@@ -169,6 +171,8 @@ version = "0.1.0"
 dependencies = [
  "argyph-core",
  "argyph-fs",
+ "argyph-graph",
+ "argyph-parse",
  "camino",
  "regex",
  "rmcp",

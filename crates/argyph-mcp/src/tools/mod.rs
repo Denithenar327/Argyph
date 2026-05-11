@@ -1,3 +1,10 @@
+mod common;
+pub mod find_definition;
+pub mod find_references;
+pub mod get_callees;
+pub mod get_callers;
+pub mod get_imports;
 pub mod get_index_status;
 pub mod get_repo_overview;
+pub mod get_symbol_outline;
 pub mod search_text;

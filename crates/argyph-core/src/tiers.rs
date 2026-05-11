@@ -54,6 +54,15 @@ impl TierState {
             Self::Tier2 { .. } => 3,
         }
     }
+
+    /// Number of indexed symbols (0 if not yet at Tier 1).
+    #[must_use]
+    pub fn symbol_count(&self) -> u64 {
+        match self {
+            Self::Tier1 { symbol_count, .. } => *symbol_count,
+            _ => 0,
+        }
+    }
 }
 
 /// Run Tier 0 indexing: walk the repo and upsert file metadata into the store.

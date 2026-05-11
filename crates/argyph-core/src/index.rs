@@ -5,6 +5,10 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 use argyph_fs::FileEntry;
+use argyph_graph::edge::Edge;
+use argyph_graph::graph::SymbolOutline;
+use argyph_graph::selector::SymbolSelector;
+use argyph_parse::types::Symbol;
 use argyph_store::Store;
 use camino::{Utf8Path, Utf8PathBuf};
 use regex::Regex;
@@ -185,6 +189,30 @@ impl Index {
             tree,
             git,
         })
+    }
+
+    pub async fn find_symbol(&self, name: &str, file: Option<&Utf8Path>) -> Result<Vec<Symbol>> {
+        Ok(self.store.find_symbol(name, file).await?)
+    }
+
+    pub async fn find_references(&self, sel: &SymbolSelector) -> Result<Vec<Edge>> {
+        Ok(self.store.find_references(sel).await?)
+    }
+
+    pub async fn get_callers(&self, sel: &SymbolSelector) -> Result<Vec<Edge>> {
+        Ok(self.store.get_callers(sel).await?)
+    }
+
+    pub async fn get_callees(&self, sel: &SymbolSelector) -> Result<Vec<Edge>> {
+        Ok(self.store.get_callees(sel).await?)
+    }
+
+    pub async fn get_imports(&self, file: &Utf8Path) -> Result<Vec<Edge>> {
+        Ok(self.store.get_imports(file).await?)
+    }
+
+    pub async fn get_symbol_outline(&self, file: &Utf8Path) -> Result<Vec<SymbolOutline>> {
+        Ok(self.store.get_symbol_outline(file).await?)
     }
 
     // ── helpers ────────────────────────────────────────────────

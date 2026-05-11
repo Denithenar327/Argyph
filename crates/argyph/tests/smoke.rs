@@ -122,11 +122,17 @@ fn mcp_initialize_and_list_tools() {
     let tools = list_resp["result"]["tools"]
         .as_array()
         .expect("tools missing");
-    assert_eq!(tools.len(), 3, "expected 3 tools, got {tools:?}");
+    assert_eq!(tools.len(), 9, "expected 9 tools, got {tools:?}");
     let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
     assert!(names.contains(&"get_index_status"));
     assert!(names.contains(&"get_repo_overview"));
     assert!(names.contains(&"search_text"));
+    assert!(names.contains(&"find_definition"));
+    assert!(names.contains(&"find_references"));
+    assert!(names.contains(&"get_callers"));
+    assert!(names.contains(&"get_callees"));
+    assert!(names.contains(&"get_imports"));
+    assert!(names.contains(&"get_symbol_outline"));
 }
 
 #[test]
@@ -176,6 +182,10 @@ fn call_get_index_status_returns_tier_info() {
     assert!(
         body["tiers"]["files"]["count"].as_u64().unwrap_or(0) > 0,
         "expected files indexed"
+    );
+    assert!(
+        body["tiers"]["symbols"].is_object(),
+        "expected symbols tier info: {body}"
     );
 }
 

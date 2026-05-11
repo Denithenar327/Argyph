@@ -41,6 +41,11 @@ impl SymbolId {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    #[must_use]
+    pub fn from_raw(raw: String) -> Self {
+        Self(raw)
+    }
 }
 
 impl std::fmt::Display for SymbolId {
