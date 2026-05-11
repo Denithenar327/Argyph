@@ -179,7 +179,9 @@ fn parse_ts_import(raw: &str) -> (Vec<String>, Vec<String>) {
             }
         }
 
-        let specifier_str: String = if let Some(rest) = before_from.strip_prefix("import ") {
+        let specifier_str: String = if let Some(rest) = before_from.strip_prefix("import type ") {
+            rest.trim().to_string()
+        } else if let Some(rest) = before_from.strip_prefix("import ") {
             rest.trim().to_string()
         } else if before_from.starts_with("export") {
             let inner = before_from.trim_start_matches("export").trim();
@@ -189,6 +191,7 @@ fn parse_ts_import(raw: &str) -> (Vec<String>, Vec<String>) {
         };
 
         let specifier_str = specifier_str.trim();
+        let specifier_str = specifier_str.strip_prefix("type ").unwrap_or(specifier_str);
         if specifier_str.starts_with('{') {
             let inner = specifier_str
                 .trim_start_matches('{')

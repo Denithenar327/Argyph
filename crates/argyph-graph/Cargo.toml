@@ -10,7 +10,12 @@ authors.workspace = true
 workspace = true
 
 [dependencies]
+argyph-parse = { path = "../argyph-parse" }
+camino = "1"
 thiserror.workspace = true
+
+[dev-dependencies]
+argyph-fs = { path = "../argyph-fs" }
 
 [lib]
 name = "argyph_graph"

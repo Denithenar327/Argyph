@@ -157,6 +157,9 @@ dependencies = [
 name = "argyph-graph"
 version = "0.1.0"
 dependencies = [
+ "argyph-fs",
+ "argyph-parse",
+ "camino",
  "thiserror",
 ]
 
