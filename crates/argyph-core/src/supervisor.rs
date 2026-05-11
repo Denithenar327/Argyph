@@ -187,8 +187,7 @@ mod tests {
         let elapsed = deadline.elapsed();
         assert!(
             elapsed < Duration::from_secs(1),
-            "boot took {:?}, expected <1s",
-            elapsed
+            "boot took {elapsed:?}, expected <1s"
         );
 
         let state = sup.get_tier_state().await;

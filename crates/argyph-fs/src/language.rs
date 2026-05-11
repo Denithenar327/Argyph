@@ -8,6 +8,18 @@ pub enum Language {
     Markdown,
 }
 
+impl std::fmt::Display for Language {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Rust => write!(f, "rust"),
+            Self::TypeScript => write!(f, "typescript"),
+            Self::Python => write!(f, "python"),
+            Self::JavaScript => write!(f, "javascript"),
+            Self::Markdown => write!(f, "markdown"),
+        }
+    }
+}
+
 impl Language {
     /// Detect language from a file extension (without the leading dot).
     ///

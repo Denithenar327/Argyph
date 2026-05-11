@@ -10,8 +10,12 @@ authors.workspace = true
 workspace = true
 
 [dependencies]
+argyph-core = { path = "../argyph-core" }
+argyph-mcp = { path = "../argyph-mcp" }
 thiserror.workspace = true
 clap = { version = "4", features = ["derive"] }
+camino = "1"
+tokio = { version = "1", features = ["rt-multi-thread"] }
 tracing = "0.1"
 
 [lib]
