@@ -3,10 +3,16 @@ use rusqlite::Connection;
 use crate::error::{Result, StoreError};
 
 /// Ordered list of migrations. Each tuple is (name, SQL source).
-const MIGRATIONS: &[(&str, &str)] = &[(
-    "001_initial_files",
-    include_str!("migrations/001_initial_files.sql"),
-)];
+const MIGRATIONS: &[(&str, &str)] = &[
+    (
+        "001_initial_files",
+        include_str!("migrations/001_initial_files.sql"),
+    ),
+    (
+        "002_symbols_chunks_edges",
+        include_str!("migrations/002_symbols_chunks_edges.sql"),
+    ),
+];
 
 /// Run all pending migrations on `conn`. Idempotent — safe to call on every
 /// boot.
@@ -64,6 +70,6 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(version, 1);
+        assert_eq!(version, 2);
     }
 }

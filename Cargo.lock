@@ -209,6 +209,8 @@ name = "argyph-store"
 version = "0.1.0"
 dependencies = [
  "argyph-fs",
+ "argyph-graph",
+ "argyph-parse",
  "async-trait",
  "blake3",
  "camino",
