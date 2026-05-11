@@ -1,13 +1,13 @@
 use std::future::Future;
 use std::sync::{Arc, Mutex};
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 use camino::Utf8PathBuf;
 use tokio::sync::RwLock;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 
-use argyph_fs::FsWatcher;
+use argyph_fs::FileWatcher;
 use argyph_store::SqliteStore;
 use argyph_store::Store;
 
@@ -16,10 +16,6 @@ use crate::error::Result;
 use crate::index::Index;
 use crate::tiers::{self, TierState};
 
-/// The single owner of runtime state.
-///
-/// Boots the index, marks Tier 0 ready, and manages the background task pool.
-/// All long-lived tasks must be registered via [`Supervisor::spawn`].
 pub struct Supervisor {
     #[allow(dead_code)]
     config: Arc<Config>,
@@ -27,14 +23,11 @@ pub struct Supervisor {
     tier_state: Arc<RwLock<TierState>>,
     tasks: Mutex<JoinSet<()>>,
     shutdown: CancellationToken,
-    watcher: Option<FsWatcher>,
+    store: Arc<dyn Store>,
+    watcher_active: bool,
 }
 
 impl Supervisor {
-    /// Boot the supervisor against the given repo root.
-    ///
-    /// Opens the SQLite store, runs Tier 0 (walk + upsert), and marks Tier 0
-    /// ready before returning.
     #[tracing::instrument(skip(config), fields(root = %root.as_str()))]
     pub async fn boot(root: Utf8PathBuf, config: Config) -> Result<Self> {
         tracing::info!("booting supervisor");
@@ -47,35 +40,67 @@ impl Supervisor {
         let index = Arc::new(Index::new(Arc::clone(&store)));
         let tier_state = Arc::new(RwLock::new(TierState::Offline));
 
-        // ── Tier 0 ────────────────────────────────────────────────
         tiers::run_tier0(&root, &*store).await?;
 
         let now = SystemTime::now();
         *tier_state.write().await = TierState::Tier0 { ready_at: now };
-        tracing::info!(
-            ready_at = ?now,
-            "Tier 0 ready"
-        );
+        tracing::info!(ready_at = ?now, "Tier 0 ready");
 
-        let watcher = FsWatcher::new(&root).ok();
+        let tier_state_clone = Arc::clone(&tier_state);
+        let root_clone = root.clone();
+        let store_clone = Arc::clone(&store);
 
-        Ok(Self {
+        let sup = Self {
             config: Arc::new(config),
             index,
             tier_state,
             tasks: Mutex::new(JoinSet::new()),
             shutdown: CancellationToken::new(),
-            watcher,
-        })
+            store,
+            watcher_active: false,
+        };
+
+        let root_for_t1 = root.clone();
+        let store_for_t1 = Arc::clone(&store_clone);
+        let tier_for_t1 = Arc::clone(&tier_state_clone);
+        sup.spawn(async move {
+            match tiers::run_tier1(&root_for_t1, &*store_for_t1).await {
+                Ok(symbol_count) => {
+                    let now = SystemTime::now();
+                    *tier_for_t1.write().await = TierState::Tier1 {
+                        ready_at: now,
+                        symbol_count,
+                    };
+                    tracing::info!(symbol_count, "Tier 1 ready");
+                }
+                Err(e) => {
+                    tracing::error!(error = %e, "Tier 1 failed");
+                }
+            }
+        });
+
+        let mut sup = sup;
+        let watcher = FileWatcher::notify_watcher(&root_clone, Duration::from_millis(500)).ok();
+
+        if let Some(watcher) = watcher {
+            let orch = crate::watcher::WatcherOrchestrator::new(
+                root_clone.clone(),
+                watcher,
+                store_clone,
+                tier_state_clone,
+            );
+            sup.spawn(async move {
+                orch.run().await;
+            });
+            sup.watcher_active = true;
+            tracing::info!("filesystem watcher active");
+        } else {
+            tracing::warn!("filesystem watcher unavailable (ENOSPC or OS limit)");
+        }
+
+        Ok(sup)
     }
 
-    /// Whether the filesystem watcher is active.
-    pub fn watcher_active(&self) -> bool {
-        self.watcher.is_some()
-    }
-
-    /// Block until the supervisor shuts down. Useful for long-running server
-    /// processes.
     pub async fn run(&self) -> Result<()> {
         tracing::info!("supervisor running");
         self.shutdown.cancelled().await;
@@ -83,25 +108,22 @@ impl Supervisor {
         Ok(())
     }
 
-    /// Access the [`Index`] facade for domain queries.
+    pub fn watcher_active(&self) -> bool {
+        self.watcher_active
+    }
+
     pub fn index(&self) -> Arc<Index> {
         Arc::clone(&self.index)
     }
 
-    /// Get a copy of the current [`TierState`].
     pub async fn get_tier_state(&self) -> TierState {
         *self.tier_state.read().await
     }
 
-    /// Gracefully shut down: cancel all background tasks and drain the pool.
     #[allow(clippy::expect_used)]
     pub async fn shutdown(self) -> Result<()> {
         tracing::info!("supervisor shutting down");
         self.shutdown.cancel();
-
-        if let Some(w) = self.watcher {
-            w.shutdown();
-        }
 
         let mut tasks = self.tasks.into_inner().unwrap_or_else(|e| e.into_inner());
         while let Some(result) = tasks.join_next().await {
@@ -110,14 +132,12 @@ impl Supervisor {
             }
         }
 
+        self.store.close().await?;
+
         tracing::info!("supervisor shut down");
         Ok(())
     }
 
-    /// Register a long-lived background task.
-    ///
-    /// The task is tied to the supervisor's [`CancellationToken`]; it is
-    /// cancelled when [`Supervisor::shutdown`] is called.
     #[allow(clippy::expect_used)]
     pub fn spawn<F, T>(&self, fut: F)
     where
@@ -139,6 +159,7 @@ impl Supervisor {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+    use argyph_fs::{ChangeKind, ChangedPath};
     use std::time::Duration;
 
     struct TestFixture {
@@ -146,8 +167,6 @@ mod tests {
         root: Utf8PathBuf,
     }
 
-    /// Copy the fixture directory into a temp dir so each test has its own
-    /// SQLite database and filesystem state.
     fn temp_fixture() -> TestFixture {
         let dir = tempfile::tempdir().unwrap();
         let src = std::path::Path::new(concat!(
@@ -250,6 +269,68 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(val, Some(42));
+
+        sup.shutdown().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn incremental_reindex_picks_up_new_file() {
+        let fixture = temp_fixture();
+        let root = fixture.root.clone();
+        let sup = Supervisor::boot(root.clone(), Config::default())
+            .await
+            .unwrap();
+
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+        let mut tier1_ready = false;
+        while tokio::time::Instant::now() < deadline {
+            let state = sup.get_tier_state().await;
+            if matches!(state, TierState::Tier1 { .. }) {
+                tier1_ready = true;
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        assert!(tier1_ready, "Tier 1 did not become ready within 30s");
+
+        let new_file_path = camino::Utf8PathBuf::from("src/new_module.rs");
+        let new_file_abs = root.join(new_file_path.as_str());
+        std::fs::write(
+            new_file_abs.as_str(),
+            "pub fn watcher_test_symbol() -> u32 { 42 }\n",
+        )
+        .unwrap();
+
+        let changes = vec![ChangedPath {
+            path: new_file_path.clone(),
+            kind: ChangeKind::Created,
+        }];
+
+        let start = std::time::Instant::now();
+        sup.index()
+            .reindex(&root, &changes)
+            .await
+            .expect("reindex should succeed");
+        let elapsed = start.elapsed();
+        assert!(
+            elapsed < Duration::from_millis(3000),
+            "reindex took {elapsed:?}, expected <3s"
+        );
+
+        let found = sup
+            .index()
+            .find_symbol("watcher_test_symbol", None)
+            .await
+            .expect("find_symbol should succeed");
+        assert!(
+            !found.is_empty(),
+            "newly created watcher_test_symbol not found after reindex"
+        );
+        assert_eq!(
+            found[0].file.as_str(),
+            "src/new_module.rs",
+            "symbol should be associated with the new file"
+        );
 
         sup.shutdown().await.unwrap();
     }

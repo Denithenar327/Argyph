@@ -240,6 +240,36 @@ impl Store for SqliteStore {
     }
 
     #[allow(clippy::expect_used)]
+    async fn replace_edges_for_file(&self, file: &Utf8Path, edges: &[Edge]) -> Result<()> {
+        let prefix = file.as_str();
+        let mut conn = self.conn.lock().expect("mutex poisoned");
+        let tx = conn.transaction()?;
+        {
+            tx.execute(
+                "DELETE FROM edges WHERE from_id LIKE ?1 || '::%' OR to_id LIKE ?1 || '::%'",
+                params![prefix],
+            )?;
+
+            if !edges.is_empty() {
+                let mut ins_stmt = tx.prepare_cached(
+                    "INSERT OR IGNORE INTO edges (from_id, to_id, kind, confidence)
+                     VALUES (?1, ?2, ?3, ?4)",
+                )?;
+                for edge in edges {
+                    ins_stmt.execute(params![
+                        edge.from.as_str(),
+                        edge.to.as_str(),
+                        edge_kind_to_str(edge.kind),
+                        confidence_to_str(edge.confidence),
+                    ])?;
+                }
+            }
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    #[allow(clippy::expect_used)]
     async fn find_symbol(&self, name: &str, file: Option<&Utf8Path>) -> Result<Vec<Symbol>> {
         let conn = self.conn.lock().expect("mutex poisoned");
 

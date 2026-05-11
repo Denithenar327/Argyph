@@ -43,6 +43,10 @@ pub trait Store: Send + Sync {
     /// insert the new edges. Atomic within a transaction.
     async fn upsert_edges(&self, edges: &[Edge]) -> Result<()>;
 
+    /// Replace all edges involving the given file (both `from_id` and `to_id`
+    /// prefixes match the file path). Deletes old edges then inserts new ones.
+    async fn replace_edges_for_file(&self, file: &Utf8Path, edges: &[Edge]) -> Result<()>;
+
     /// Find symbols by name, optionally scoped to a specific file.
     async fn find_symbol(&self, name: &str, file: Option<&Utf8Path>) -> Result<Vec<Symbol>>;
 

@@ -1,30 +1,33 @@
-use std::fmt;
+use std::collections::HashSet;
 use std::time::SystemTime;
 
-use argyph_fs::{FileEntry, IgnoreWalker, Walker};
+use argyph_fs::{self, ChangeKind, ChangedPath, FileEntry, Language, Walker};
+use argyph_graph::builder::DefaultGraphBuilder;
+use argyph_graph::GraphBuilder;
+use argyph_parse::DefaultParser;
+use argyph_parse::Parser;
 use argyph_store::Store;
+use camino::{Utf8Path, Utf8PathBuf};
 
 use crate::error::Result;
 
-/// Progressive indexing state — each tier is independently useful.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TierState {
-    /// No index exists yet; supervisor is uninitialized.
     Offline,
-    /// File-level index complete — `search_text`, `pack_repo`, `read_file_range`.
-    Tier0 { ready_at: SystemTime },
-    /// Symbol index complete — `find_definition`, `find_references`, graph queries.
+    Tier0 {
+        ready_at: SystemTime,
+    },
     Tier1 {
         ready_at: SystemTime,
         symbol_count: u64,
     },
-    /// Embedding index complete — `search_semantic` at full coverage.
     Tier2 {
         ready_at: SystemTime,
         embedded_count: u64,
     },
 }
 
+use std::fmt;
 impl fmt::Display for TierState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -37,7 +40,6 @@ impl fmt::Display for TierState {
 }
 
 impl TierState {
-    /// Whether Tier 0 (or higher) is available.
     pub fn is_ready(&self) -> bool {
         matches!(
             self,
@@ -45,7 +47,6 @@ impl TierState {
         )
     }
 
-    /// Minimum tier reached. Higher-numbered tiers imply lower ones.
     pub fn tier_number(&self) -> u8 {
         match self {
             Self::Offline => 0,
@@ -55,7 +56,6 @@ impl TierState {
         }
     }
 
-    /// Number of indexed symbols (0 if not yet at Tier 1).
     #[must_use]
     pub fn symbol_count(&self) -> u64 {
         match self {
@@ -65,16 +65,12 @@ impl TierState {
     }
 }
 
-/// Run Tier 0 indexing: walk the repo and upsert file metadata into the store.
-///
-/// Returns the entries that were upserted so the caller can feed them into
-/// Tier 1 later. Instrumented with `tracing`.
 #[tracing::instrument(skip(store), fields(root = %root.as_str()))]
-pub async fn run_tier0(root: &camino::Utf8Path, store: &dyn Store) -> Result<Vec<FileEntry>> {
+pub async fn run_tier0(root: &Utf8Path, store: &dyn Store) -> Result<Vec<FileEntry>> {
     tracing::info!("starting Tier 0 walk");
     let started = std::time::Instant::now();
 
-    let walker = IgnoreWalker::new();
+    let walker = argyph_fs::IgnoreWalker::new();
     let entries: Vec<FileEntry> = walker.walk(root).collect();
 
     tracing::info!(
@@ -94,6 +90,213 @@ pub async fn run_tier0(root: &camino::Utf8Path, store: &dyn Store) -> Result<Vec
     );
 
     Ok(entries)
+}
+
+#[tracing::instrument(skip(store), fields(root = %root.as_str()))]
+pub async fn run_tier1(root: &Utf8Path, store: &dyn Store) -> Result<u64> {
+    tracing::info!("starting Tier 1 parse");
+    let started = std::time::Instant::now();
+
+    let files = store.list_files().await?;
+    let parser = DefaultParser::new();
+    let builder = DefaultGraphBuilder;
+
+    let mut parsed: Vec<(Utf8PathBuf, argyph_parse::ParsedFile)> = Vec::with_capacity(files.len());
+    let mut total_symbols: u64 = 0;
+
+    for entry in &files {
+        let path = root.join(entry.path.as_str());
+        let source = match std::fs::read_to_string(path.as_str()) {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::warn!(file = %entry.path, error = %e, "skipping unreadable file");
+                continue;
+            }
+        };
+
+        let pf = parser.parse(entry, &source)?;
+        total_symbols += pf.symbols.len() as u64;
+
+        if !pf.symbols.is_empty() {
+            store.upsert_symbols(&pf.symbols).await?;
+        }
+        if !pf.chunks.is_empty() {
+            store.upsert_chunks(&pf.chunks).await?;
+        }
+        parsed.push((entry.path.clone(), pf));
+    }
+
+    tracing::info!(
+        files_parsed = parsed.len(),
+        symbols = total_symbols,
+        elapsed_ms = started.elapsed().as_millis() as u64,
+        "Tier 1 parse complete, building edges"
+    );
+
+    let edges = builder.build_edges(&parsed)?;
+    store.upsert_edges(&edges).await?;
+
+    tracing::info!(
+        edges = edges.len(),
+        total_ms = started.elapsed().as_millis() as u64,
+        "Tier 1 finished"
+    );
+
+    Ok(total_symbols)
+}
+
+#[tracing::instrument(skip(store), fields(root = %root.as_str()))]
+pub async fn incremental_reindex(
+    root: &Utf8Path,
+    store: &dyn Store,
+    changes: &[ChangedPath],
+) -> Result<()> {
+    let parser = DefaultParser::new();
+    let builder = DefaultGraphBuilder;
+
+    let mut changed_files: HashSet<Utf8PathBuf> = HashSet::new();
+    let mut parsed: Vec<(Utf8PathBuf, argyph_parse::ParsedFile)> = Vec::new();
+
+    for change in changes {
+        let path = &change.path;
+
+        if change.kind == ChangeKind::Removed {
+            store.delete_file(path).await?;
+            changed_files.insert(path.clone());
+            continue;
+        }
+
+        changed_files.insert(path.clone());
+
+        let abs = root.join(path.as_str());
+
+        let entry = match read_file_entry(root, path) {
+            Ok(e) => e,
+            Err(e) => {
+                tracing::warn!(file = %path, error = %e, "skipping changed file");
+                continue;
+            }
+        };
+
+        let source = match std::fs::read_to_string(abs.as_str()) {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::warn!(file = %path, error = %e, "skipping unreadable file");
+                continue;
+            }
+        };
+
+        let pf = match parser.parse(&entry, &source) {
+            Ok(pf) => pf,
+            Err(e) => {
+                tracing::warn!(file = %path, error = %e, "parse failed");
+                continue;
+            }
+        };
+
+        store.upsert_files(&[entry]).await?;
+        if !pf.symbols.is_empty() {
+            store.upsert_symbols(&pf.symbols).await?;
+        }
+        if !pf.chunks.is_empty() {
+            store.upsert_chunks(&pf.chunks).await?;
+        }
+        parsed.push((path.clone(), pf));
+    }
+
+    if parsed.is_empty() && changed_files.is_empty() {
+        return Ok(());
+    }
+
+    let neighbors = find_import_neighbors(store, &changed_files).await;
+    let neighbor_files: HashSet<&Utf8PathBuf> = neighbors.iter().collect();
+
+    let all_files = store.list_files().await?;
+    for entry in &all_files {
+        if parsed.iter().any(|(p, _)| p == &entry.path) {
+            continue;
+        }
+        if !neighbor_files.contains(&entry.path) {
+            continue;
+        }
+
+        let abs = root.join(entry.path.as_str());
+        let source = match std::fs::read_to_string(abs.as_str()) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+        let pf = match parser.parse(entry, &source) {
+            Ok(pf) => pf,
+            Err(_) => continue,
+        };
+        parsed.push((entry.path.clone(), pf));
+    }
+
+    let edges = builder.build_edges(&parsed)?;
+
+    let mut affected: HashSet<&Utf8PathBuf> = parsed.iter().map(|(p, _)| p).collect();
+    for change in changes {
+        affected.insert(&change.path);
+    }
+
+    for file_path in affected {
+        store.replace_edges_for_file(file_path, &edges).await?;
+    }
+
+    Ok(())
+}
+
+fn read_file_entry(root: &Utf8Path, path: &Utf8Path) -> Result<FileEntry> {
+    let abs = root.join(path.as_str());
+    let meta = std::fs::metadata(abs.as_str())?;
+    let size = meta.len();
+    let modified = meta.modified().unwrap_or(SystemTime::UNIX_EPOCH);
+
+    let hash = argyph_fs::hash_file(&abs)
+        .map_err(|e| crate::CoreError::Io(std::io::Error::other(e.to_string())))?;
+
+    let ext = path.extension().unwrap_or("");
+    let language = Language::from_extension(ext);
+
+    Ok(FileEntry {
+        path: path.to_path_buf(),
+        hash,
+        language,
+        size,
+        modified,
+    })
+}
+
+async fn find_import_neighbors(
+    store: &dyn Store,
+    files: &HashSet<Utf8PathBuf>,
+) -> Vec<Utf8PathBuf> {
+    let mut result = HashSet::new();
+    for file in files {
+        if let Ok(edges) = store.get_imports(file).await {
+            for e in &edges {
+                if let Some((imported, _, _)) = parse_sid_prefix(e.to.as_str()) {
+                    if !files.contains(&imported) {
+                        result.insert(imported);
+                    }
+                }
+                if let Some((importer, _, _)) = parse_sid_prefix(e.from.as_str()) {
+                    if !files.contains(&importer) {
+                        result.insert(importer);
+                    }
+                }
+            }
+        }
+    }
+    result.into_iter().collect()
+}
+
+fn parse_sid_prefix(id: &str) -> Option<(Utf8PathBuf, String, usize)> {
+    let rest = id.rsplit_once("::")?;
+    let (prefix, start_str) = rest;
+    let start: usize = start_str.parse().ok()?;
+    let (file, name) = prefix.rsplit_once("::")?;
+    Some((Utf8PathBuf::from(file), name.to_string(), start))
 }
 
 #[cfg(test)]

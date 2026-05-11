@@ -12,7 +12,7 @@ use std::time::SystemTime;
 pub use hash::{hash_file, Blake3Hash};
 pub use language::Language;
 pub use walker::{IgnoreWalker, PollingWalker};
-pub use watcher::{ChangeKind, ChangedPath, FsWatcher};
+pub use watcher::{ChangeKind, ChangedPath, FileWatcher, FsWatcher, PollingWatcher};
 
 /// Walks a repository root, yielding [`FileEntry`] records with path, hash,
 /// detected language, size, and modification time. Honors `.gitignore` and

@@ -4,6 +4,7 @@ use std::process::Command;
 use std::sync::Arc;
 use std::time::SystemTime;
 
+use argyph_fs::ChangedPath;
 use argyph_fs::FileEntry;
 use argyph_graph::edge::Edge;
 use argyph_graph::graph::SymbolOutline;
@@ -213,6 +214,10 @@ impl Index {
 
     pub async fn get_symbol_outline(&self, file: &Utf8Path) -> Result<Vec<SymbolOutline>> {
         Ok(self.store.get_symbol_outline(file).await?)
+    }
+
+    pub async fn reindex(&self, root: &Utf8Path, changes: &[ChangedPath]) -> Result<()> {
+        crate::tiers::incremental_reindex(root, &*self.store, changes).await
     }
 
     // ── helpers ────────────────────────────────────────────────
