@@ -14,6 +14,7 @@ argyph-fs = { path = "../argyph-fs" }
 argyph-graph = { path = "../argyph-graph" }
 argyph-parse = { path = "../argyph-parse" }
 argyph-embed = { path = "../argyph-embed" }
+argyph-pack = { path = "../argyph-pack" }
 argyph-store = { path = "../argyph-store" }
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros", "time"] }
 tokio-util = { version = "0.7", features = ["rt"] }

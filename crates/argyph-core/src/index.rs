@@ -10,6 +10,7 @@ use argyph_fs::FileEntry;
 use argyph_graph::edge::Edge;
 use argyph_graph::graph::SymbolOutline;
 use argyph_graph::selector::SymbolSelector;
+use argyph_pack::{self, DefaultPacker, PackContext, PackRequest, PackResult, PackScope, Packer};
 use argyph_parse::types::Symbol;
 use argyph_store::Store;
 use camino::{Utf8Path, Utf8PathBuf};
@@ -277,6 +278,17 @@ impl Index {
         crate::tiers::incremental_reindex(root, &*self.store, changes).await
     }
 
+    pub async fn pack(&self, root: &Utf8Path, req: &PackRequest) -> Result<PackResult> {
+        let packer = DefaultPacker::new()
+            .map_err(|e| CoreError::Io(std::io::Error::other(e)))?;
+        let ctx = IndexPackContext {
+            index: self,
+            root: root.to_owned(),
+        };
+        packer.pack(req, &ctx)
+            .map_err(|e| CoreError::Io(std::io::Error::other(e)))
+    }
+
     // ── helpers ────────────────────────────────────────────────
 
     fn build_tree(files: &[FileEntry], depth: usize) -> String {
@@ -335,6 +347,48 @@ impl Index {
             head_short,
             dirty,
         })
+    }
+}
+
+struct IndexPackContext<'a> {
+    index: &'a Index,
+    root: Utf8PathBuf,
+}
+
+impl PackContext for IndexPackContext<'_> {
+    fn list_files(&self, scope: &PackScope) -> Vec<Utf8PathBuf> {
+        let files = tokio::runtime::Handle::current()
+            .block_on(self.index.list_files())
+            .unwrap_or_default();
+        let paths: Vec<Utf8PathBuf> = files.into_iter().map(|f| f.path).collect();
+        match scope {
+            PackScope::All => paths,
+            PackScope::Paths(requested) => {
+                let requested_set: std::collections::HashSet<_> = requested.iter().collect();
+                paths.into_iter()
+                    .filter(|p| requested_set.contains(p))
+                    .collect()
+            }
+            PackScope::Symbol(_name) => vec![],
+        }
+    }
+
+    fn read(&self, file: &Utf8Path) -> argyph_pack::Result<String> {
+        let full_path = self.root.join(file.as_str());
+        std::fs::read_to_string(full_path.as_str())
+            .map_err(|e| argyph_pack::PackError::Io(e.to_string()))
+    }
+
+    fn modified(&self, file: &Utf8Path) -> Option<SystemTime> {
+        tokio::runtime::Handle::current()
+            .block_on(self.index.get_file(file))
+            .ok()
+            .flatten()
+            .map(|entry| entry.modified)
+    }
+
+    fn in_edges(&self, _file: &Utf8Path) -> argyph_pack::Result<usize> {
+        Ok(0)
     }
 }
 

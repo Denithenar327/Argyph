@@ -144,6 +144,18 @@ impl ArgyphMcp {
         let response = tools::get_symbol_outline::handle(&self.supervisor, &self.root, req).await;
         Json(response)
     }
+
+    #[tool(
+        name = "pack_repo",
+        description = "Produce a token-budgeted, flat-packed representation of the repository for AI consumption."
+    )]
+    async fn pack_repo(
+        &self,
+        Parameters(req): Parameters<tools::pack_repo::Request>,
+    ) -> Json<tools::pack_repo::Response> {
+        let response = tools::pack_repo::handle(&self.supervisor, &self.root, req).await;
+        Json(response)
+    }
 }
 
 #[tool_handler]

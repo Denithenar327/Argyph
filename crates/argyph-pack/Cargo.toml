@@ -11,6 +11,8 @@ workspace = true
 
 [dependencies]
 thiserror.workspace = true
+tiktoken-rs = "0.6"
+camino = "1"
 
 [lib]
 name = "argyph_pack"

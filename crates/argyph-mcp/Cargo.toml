@@ -11,6 +11,7 @@ workspace = true
 
 [dependencies]
 argyph-core = { path = "../argyph-core" }
+argyph-pack = { path = "../argyph-pack" }
 argyph-graph = { path = "../argyph-graph" }
 argyph-parse = { path = "../argyph-parse" }
 argyph-fs = { path = "../argyph-fs" }

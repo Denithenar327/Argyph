@@ -7,5 +7,6 @@ pub mod get_imports;
 pub mod get_index_status;
 pub mod get_repo_overview;
 pub mod get_symbol_outline;
+pub mod pack_repo;
 pub mod search_semantic;
 pub mod search_text;
