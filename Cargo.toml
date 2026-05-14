@@ -23,6 +23,18 @@ authors = ["Ezzy1630"]
 [workspace.dependencies]
 thiserror = "2"
 
+[workspace.metadata.dist]
+cargo-dist-version = "0.28.0"
+ci = "github"
+targets = [
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-pc-windows-msvc",
+]
+dist = true
+
 [workspace.lints.rust]
 unsafe_code = "forbid"
 

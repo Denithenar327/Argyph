@@ -1,0 +1,17 @@
+{
+    "name": "argyph",
+    "display_name": "Argyph",
+    "description": "Local-first MCP server for fast, structured, and semantic code context",
+    "version": "0.1.0",
+    "mcpServers": {
+        "argyph": {
+            "command": "argyph",
+            "args": ["serve"],
+            "env": {}
+        }
+    },
+    "icon": "icon.png",
+    "homepage": "https://github.com/Ezzy1630/argyph",
+    "author": "Ezzy1630",
+    "license": "MIT OR Apache-2.0"
+}
