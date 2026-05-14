@@ -8,10 +8,7 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Locator {
     Heading(Vec<String>),
-    FilePlusHeading {
-        file: String,
-        path: Vec<String>,
-    },
+    FilePlusHeading { file: String, path: Vec<String> },
     Any,
     Name(String),
 }

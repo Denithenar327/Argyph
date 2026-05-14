@@ -9,15 +9,21 @@ authors.workspace = true
 [lints]
 workspace = true
 
+[features]
+smart = ["dep:reqwest", "dep:eventsource-stream"]
+
 [dependencies]
 argyph-store = { path = "../argyph-store" }
 argyph-fs = { path = "../argyph-fs" }
 argyph-parse = { path = "../argyph-parse" }
 argyph-embed = { path = "../argyph-embed" }
 anyhow = "1"
+async-trait = "0.1"
 blake3 = "1"
 camino = "1"
+eventsource-stream = { version = "0.2", optional = true }
 once_cell = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"], optional = true }
 schemars = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

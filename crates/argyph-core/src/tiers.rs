@@ -171,7 +171,9 @@ pub async fn run_tier1_5(store: &dyn Store, root: &Utf8Path, max_file_bytes: u64
             continue;
         };
 
-        let Some(lang) = f.language else { continue; };
+        let Some(lang) = f.language else {
+            continue;
+        };
         let file_key = f.path.as_str().len() as u64;
         let nodes: Vec<StructuralNode> = match lang {
             Language::Markdown => structural::markdown::parse(file_key, &source),

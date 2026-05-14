@@ -15,7 +15,10 @@ fn compute_blake3(content: &str) -> [u8; 32] {
     *blake3::hash(content.as_bytes()).as_bytes()
 }
 
-fn record_from_node(file_id: i64, node: &argyph_parse::structural::StructuralNode) -> StructuralNodeRecord {
+fn record_from_node(
+    file_id: i64,
+    node: &argyph_parse::structural::StructuralNode,
+) -> StructuralNodeRecord {
     StructuralNodeRecord {
         id: 0,
         file_id,
@@ -30,7 +33,11 @@ fn record_from_node(file_id: i64, node: &argyph_parse::structural::StructuralNod
     }
 }
 
-fn parse_structural(language: argyph_fs::Language, file_id: i64, source: &str) -> Vec<StructuralNodeRecord> {
+fn parse_structural(
+    language: argyph_fs::Language,
+    file_id: i64,
+    source: &str,
+) -> Vec<StructuralNodeRecord> {
     use argyph_fs::Language;
     let nodes: Vec<argyph_parse::structural::StructuralNode> = match language {
         Language::Markdown => argyph_parse::structural::markdown::parse(file_id as u64, source),
@@ -74,7 +81,10 @@ pub async fn parse_on_demand(
     let records = parse_structural(language, file_id, &content);
 
     #[allow(clippy::expect_used)]
-    OOB_CACHE.lock().expect("oob cache lock").insert(key, records.clone());
+    OOB_CACHE
+        .lock()
+        .expect("oob cache lock")
+        .insert(key, records.clone());
 
     Ok(Some(records))
 }
@@ -178,9 +188,9 @@ pub async fn resolve_structural_path(
     };
 
     let file_id = match locator {
-        Locator::FilePlusHeading { file, .. } => store
-            .get_file_id(&camino::Utf8PathBuf::from(file))
-            .await?,
+        Locator::FilePlusHeading { file, .. } => {
+            store.get_file_id(&camino::Utf8PathBuf::from(file)).await?
+        }
         _ => single_file,
     };
 
@@ -196,7 +206,12 @@ pub async fn resolve_structural_path(
         if let Some(file_entry) = store.get_file_by_id(fid).await? {
             if let Some(lang) = file_entry.language {
                 if let Some(records) = parse_on_demand(
-                    &store, root, fid, file_entry.path.as_str(), lang, 10_485_760,
+                    &store,
+                    root,
+                    fid,
+                    file_entry.path.as_str(),
+                    lang,
+                    10_485_760,
                 )
                 .await?
                 {
@@ -285,7 +300,10 @@ pub async fn resolve_hybrid(
         let mid = (hit.byte_range.0 + hit.byte_range.1) / 2;
 
         let node_record = match file_id {
-            Some(fid) => store.enclosing_structural_node(fid, mid).await.unwrap_or(None),
+            Some(fid) => store
+                .enclosing_structural_node(fid, mid)
+                .await
+                .unwrap_or(None),
             None => None,
         };
 
@@ -327,7 +345,11 @@ pub async fn resolve_hybrid(
 
     dedupe_spans(&mut merged);
 
-    merged.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    merged.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     merged.truncate(max_results);
 
     expand_synthetic_spans(store, root, &merged, max_bytes).await
@@ -344,14 +366,8 @@ pub async fn resolve_scoped_semantic(
     max_results: usize,
     max_bytes: u32,
 ) -> anyhow::Result<Vec<Span>> {
-    let scope_spans = resolve_structural_path(
-        Arc::clone(&store),
-        root,
-        locator,
-        single_file,
-        max_bytes,
-    )
-    .await?;
+    let scope_spans =
+        resolve_structural_path(Arc::clone(&store), root, locator, single_file, max_bytes).await?;
 
     let Some(scope) = scope_spans.first() else {
         return Ok(vec![]);
@@ -380,7 +396,10 @@ pub async fn resolve_scoped_semantic(
         let mid = (hit.byte_range.0 + hit.byte_range.1) / 2;
 
         let node_record = match file_id {
-            Some(fid) => store.enclosing_structural_node(fid, mid).await.unwrap_or(None),
+            Some(fid) => store
+                .enclosing_structural_node(fid, mid)
+                .await
+                .unwrap_or(None),
             None => None,
         };
 
@@ -407,7 +426,11 @@ pub async fn resolve_scoped_semantic(
         });
     }
 
-    synthetic.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    synthetic.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     synthetic.truncate(max_results);
 
     expand_synthetic_spans(store, root, &synthetic, max_bytes).await

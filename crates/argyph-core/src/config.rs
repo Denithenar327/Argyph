@@ -19,6 +19,9 @@ pub struct Config {
 
     #[serde(default)]
     pub locate: LocateConfig,
+
+    #[serde(default)]
+    pub locate_smart: LocateSmartConfig,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -60,6 +63,30 @@ fn default_locate_max_file_bytes() -> u64 {
     10_485_760
 }
 
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+pub struct LocateSmartConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub provider: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub endpoint: Option<String>,
+    #[serde(default = "default_max_steps")]
+    pub max_steps: u8,
+    #[serde(default = "default_max_output_tokens")]
+    pub max_output_tokens: u32,
+}
+
+fn default_max_steps() -> u8 {
+    4
+}
+
+fn default_max_output_tokens() -> u32 {
+    1024
+}
+
 fn default_exclude() -> Vec<String> {
     vec!["docs/generated/**".into(), "**/*.min.js".into()]
 }
@@ -90,6 +117,7 @@ impl Default for Config {
                 default_token_budget: default_token_budget(),
             },
             locate: LocateConfig::default(),
+            locate_smart: LocateSmartConfig::default(),
         }
     }
 }
@@ -97,16 +125,37 @@ impl Default for Config {
 impl Config {
     pub fn load(root: &Utf8Path) -> Result<Self> {
         let config_path = root.join(".argyph").join("config.toml");
-        if config_path.exists() {
+        let mut config = if config_path.exists() {
             match std::fs::read_to_string(config_path.as_str()) {
                 Ok(content) => match toml::from_str(&content) {
-                    Ok(config) => return Ok(config),
-                    Err(e) => tracing::warn!("invalid .argyph/config.toml: {e}, using defaults"),
+                    Ok(config) => config,
+                    Err(e) => {
+                        tracing::warn!("invalid .argyph/config.toml: {e}, using defaults");
+                        Self::default()
+                    }
                 },
-                Err(e) => tracing::warn!("cannot read .argyph/config.toml: {e}, using defaults"),
+                Err(e) => {
+                    tracing::warn!("cannot read .argyph/config.toml: {e}, using defaults");
+                    Self::default()
+                }
             }
+        } else {
+            Self::default()
+        };
+        config.apply_env_overrides();
+        Ok(config)
+    }
+
+    pub fn apply_env_overrides(&mut self) {
+        if let Ok(v) = std::env::var("ARGYPH_LOCATE_SMART_ENABLED") {
+            self.locate_smart.enabled = v == "true" || v == "1";
         }
-        Ok(Self::default())
+        if let Ok(v) = std::env::var("ARGYPH_LOCATE_SMART_PROVIDER") {
+            self.locate_smart.provider = Some(v);
+        }
+        if let Ok(v) = std::env::var("ARGYPH_LOCATE_SMART_MODEL") {
+            self.locate_smart.model = Some(v);
+        }
     }
 }
 

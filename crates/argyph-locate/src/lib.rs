@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 pub mod path;
 pub mod resolve;
+pub mod smart;
 pub mod strategy;
 pub mod types;
 
@@ -27,9 +28,7 @@ pub async fn locate(
     let max_results = req.max_results.clamp(1, 10) as usize;
 
     let single_file: Option<i64> = if let Some(ref f) = req.file {
-        store
-            .get_file_id(&camino::Utf8PathBuf::from(f))
-            .await?
+        store.get_file_id(&camino::Utf8PathBuf::from(f)).await?
     } else {
         None
     };
