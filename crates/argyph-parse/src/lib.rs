@@ -1,9 +1,11 @@
 #![forbid(unsafe_code)]
+#![cfg_attr(test, allow(clippy::unwrap_used))]
 
 mod chunker;
 mod error;
 pub mod languages;
 mod parser;
+pub mod structural;
 pub mod types;
 
 pub use chunker::{ast_chunks, char_split, fallback_chunks};
