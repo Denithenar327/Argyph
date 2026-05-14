@@ -24,6 +24,10 @@ pub enum ErrorCode {
     SymbolNotFound,
     SymbolAmbiguous,
     Internal,
+    LocateSmartDisabled,
+    LocateSmartBudgetExceeded,
+    ProviderError,
+    StaleIndex,
 }
 
 impl std::fmt::Display for ErrorCode {
@@ -37,6 +41,10 @@ impl std::fmt::Display for ErrorCode {
             Self::SymbolNotFound => "SYMBOL_NOT_FOUND",
             Self::SymbolAmbiguous => "SYMBOL_AMBIGUOUS",
             Self::Internal => "INTERNAL",
+            Self::LocateSmartDisabled => "LOCATE_SMART_DISABLED",
+            Self::LocateSmartBudgetExceeded => "LOCATE_SMART_BUDGET_EXCEEDED",
+            Self::ProviderError => "PROVIDER_ERROR",
+            Self::StaleIndex => "STALE_INDEX",
         };
         write!(f, "{s}")
     }
