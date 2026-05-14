@@ -17,6 +17,7 @@ argyph-store = { path = "../argyph-store" }
 argyph-fs = { path = "../argyph-fs" }
 argyph-parse = { path = "../argyph-parse" }
 argyph-embed = { path = "../argyph-embed" }
+argyph-graph = { path = "../argyph-graph" }
 anyhow = "1"
 async-trait = "0.1"
 blake3 = "1"
