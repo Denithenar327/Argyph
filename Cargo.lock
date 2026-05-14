@@ -201,6 +201,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "argyph-locate"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "argyph-embed",
+ "argyph-fs",
+ "argyph-store",
+ "camino",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "argyph-mcp"
 version = "0.1.0"
 dependencies = [

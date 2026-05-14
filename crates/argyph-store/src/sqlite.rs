@@ -147,6 +147,47 @@ impl Store for SqliteStore {
     }
 
     #[allow(clippy::expect_used)]
+    async fn get_file_id(&self, path: &Utf8Path) -> Result<Option<i64>> {
+        let conn = self.conn.lock().expect("mutex poisoned");
+        let mut stmt = conn.prepare_cached("SELECT rowid FROM files WHERE path = ?1")?;
+        let result = stmt
+            .query_row(params![path.as_str()], |r| r.get(0))
+            .optional()?;
+        Ok(result)
+    }
+
+    #[allow(clippy::expect_used)]
+    async fn get_file_by_id(&self, id: i64) -> Result<Option<FileEntry>> {
+        let conn = self.conn.lock().expect("mutex poisoned");
+        let mut stmt =
+            conn.prepare_cached("SELECT path, hash, language, size FROM files WHERE rowid = ?1")?;
+        let result = stmt
+            .query_row(params![id], |row| {
+                let path_str: String = row.get(0)?;
+                let hash_blob: Vec<u8> = row.get(1)?;
+                let language: Option<String> = row.get(2)?;
+                let size: i64 = row.get(3)?;
+                Ok((path_str, hash_blob, language, size))
+            })
+            .optional()?;
+        match result {
+            Some((path_str, hash_blob, lang_str, size)) => {
+                let path = Utf8PathBuf::from(&path_str);
+                let hash = blob_to_hash(&hash_blob);
+                let language = lang_str.and_then(|s| str_to_language(&s));
+                Ok(Some(FileEntry {
+                    path,
+                    hash,
+                    language,
+                    size: size as u64,
+                    modified: SystemTime::UNIX_EPOCH,
+                }))
+            }
+            None => Ok(None),
+        }
+    }
+
+    #[allow(clippy::expect_used)]
     async fn upsert_symbols(&self, symbols: &[Symbol]) -> Result<()> {
         let mut conn = self.conn.lock().expect("mutex poisoned");
         let tx = conn.transaction()?;
@@ -593,7 +634,8 @@ impl Store for SqliteStore {
         let conn = self.conn.lock().expect("mutex poisoned");
         let mut hits = Vec::with_capacity(fused.len());
         for (chunk_id, score) in &fused {
-            let (text, file) = chunk_text_and_file(&conn, chunk_id)?;
+            let (text, file, byte_start, byte_end) = chunk_info(&conn, chunk_id)?;
+            let line_range = text_bytes_to_line_range(&text, byte_start, byte_end);
             let source = if in_both(&bm25_hits, &vector_hits, chunk_id) {
                 HitSource::Hybrid
             } else if bm25_hits.iter().any(|(id, _)| id == chunk_id) {
@@ -606,6 +648,8 @@ impl Store for SqliteStore {
                 chunk_id: chunk_id.clone(),
                 chunk_text: text,
                 file,
+                byte_range: (byte_start, byte_end),
+                line_range,
                 score: *score,
                 source,
             });
@@ -1163,6 +1207,10 @@ fn language_to_str(lang: Language) -> &'static str {
         Language::Python => "Python",
         Language::JavaScript => "JavaScript",
         Language::Markdown => "Markdown",
+        Language::Json => "Json",
+        Language::Yaml => "Yaml",
+        Language::Toml => "Toml",
+        Language::Csv => "Csv",
     }
 }
 
@@ -1173,6 +1221,10 @@ fn str_to_language(s: &str) -> Option<Language> {
         "Python" => Some(Language::Python),
         "JavaScript" => Some(Language::JavaScript),
         "Markdown" => Some(Language::Markdown),
+        "Json" => Some(Language::Json),
+        "Yaml" => Some(Language::Yaml),
+        "Toml" => Some(Language::Toml),
+        "Csv" => Some(Language::Csv),
         _ => None,
     }
 }
@@ -1256,10 +1308,16 @@ fn build_vector_search_sql(
     (sql, params)
 }
 
-fn chunk_text_and_file(conn: &Connection, chunk_id: &str) -> Result<(String, String)> {
-    let mut stmt = conn.prepare_cached("SELECT text, file FROM chunks WHERE id = ?1")?;
+fn chunk_info(conn: &Connection, chunk_id: &str) -> Result<(String, String, u32, u32)> {
+    let mut stmt =
+        conn.prepare_cached("SELECT text, file, range_start, range_end FROM chunks WHERE id = ?1")?;
     stmt.query_row(params![chunk_id], |row| {
-        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, i64>(2)? as u32,
+            row.get::<_, i64>(3)? as u32,
+        ))
     })
     .map_err(|e| e.into())
 }
@@ -1267,4 +1325,19 @@ fn chunk_text_and_file(conn: &Connection, chunk_id: &str) -> Result<(String, Str
 fn in_both(bm25_hits: &[(String, f32)], vector_hits: &[(String, f32)], chunk_id: &str) -> bool {
     bm25_hits.iter().any(|(id, _)| id == chunk_id)
         && vector_hits.iter().any(|(id, _)| id == chunk_id)
+}
+
+fn text_bytes_to_line_range(text: &str, byte_start: u32, byte_end: u32) -> (u32, u32) {
+    let newline_count_before = text[..(byte_start as usize).min(text.len())]
+        .chars()
+        .filter(|&c| c == '\n')
+        .count() as u32;
+    let newline_count_total = text.chars().filter(|&c| c == '\n').count() as u32;
+    let start_line = newline_count_before + 1;
+    let end_line = if byte_end > byte_start {
+        newline_count_total + 1
+    } else {
+        start_line
+    };
+    (start_line, end_line.max(start_line))
 }

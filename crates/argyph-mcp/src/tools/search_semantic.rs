@@ -107,6 +107,7 @@ pub async fn handle(
         language: f.languages.and_then(|v| v.into_iter().next()),
         paths_glob: f.paths_glob.and_then(|v| v.into_iter().next()),
         exclude_glob: f.exclude_glob.and_then(|v| v.into_iter().next()),
+        file_ids: None,
     });
 
     let index = supervisor.index();

@@ -69,6 +69,7 @@ impl Supervisor {
 
         // Channel to signal Tier 2 start after Tier 1 finishes
         let (tier2_start_tx, tier2_start_rx) = tokio::sync::oneshot::channel::<()>();
+        let (tier1_5_start_tx, tier1_5_start_rx) = tokio::sync::oneshot::channel::<()>();
 
         // Tier 1 — parse symbols, create chunks
         let root_for_t1 = root.clone();
@@ -88,7 +89,35 @@ impl Supervisor {
             }
             // Signal Tier 2 that chunks exist (or Tier 1 failed — Tier 2 exits quickly either way)
             let _ = tier2_start_tx.send(());
+            let _ = tier1_5_start_tx.send(());
         });
+
+        // Tier 1.5 — structural indexing (starts after Tier 1, parallel with Tier 2)
+        {
+            let root_for_t1_5 = root.clone();
+            let store_for_t1_5 = Arc::clone(&store_clone);
+            let tier_for_t1_5 = Arc::clone(&tier_state_clone);
+            let max_bytes = sup.config.locate.max_file_bytes;
+            sup.spawn(async move {
+                let _ = tier1_5_start_rx.await;
+                match tiers::run_tier1_5(&*store_for_t1_5, &root_for_t1_5, max_bytes).await {
+                    Ok(count) => {
+                        let mut s = tier_for_t1_5.write().await;
+                        if matches!(*s, TierState::Tier1 { .. })
+                            || matches!(*s, TierState::Tier1_5 { .. })
+                        {
+                            *s = TierState::Tier1_5 {
+                                structural_files: count,
+                            };
+                        }
+                        tracing::info!(structural_files = count, "Tier 1.5 ready");
+                    }
+                    Err(e) => {
+                        tracing::warn!("Tier 1.5 failed: {e}");
+                    }
+                }
+            });
+        }
 
         // Tier 2 — background semantic embedding (waits for Tier 1, then polls)
         {
@@ -166,6 +195,10 @@ impl Supervisor {
         Arc::clone(&self.index)
     }
 
+    pub fn store(&self) -> Arc<dyn Store> {
+        Arc::clone(&self.store)
+    }
+
     pub fn embedder(&self) -> Option<Arc<dyn Embedder>> {
         self.embedder.get().cloned()
     }
@@ -239,7 +272,7 @@ fn build_embedder() -> Arc<OnceLock<Arc<dyn Embedder>>> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use argyph_fs::{ChangeKind, ChangedPath};
@@ -365,13 +398,16 @@ mod tests {
         let mut tier1_ready = false;
         while tokio::time::Instant::now() < deadline {
             let state = sup.get_tier_state().await;
-            if matches!(state, TierState::Tier1 { .. }) {
+            if matches!(state, TierState::Tier1 { .. } | TierState::Tier1_5 { .. }) {
                 tier1_ready = true;
                 break;
             }
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
-        assert!(tier1_ready, "Tier 1 did not become ready within 30s");
+        assert!(
+            tier1_ready,
+            "Tier 1 / Tier 1.5 did not become ready within 30s"
+        );
 
         let new_file_path = camino::Utf8PathBuf::from("src/new_module.rs");
         let new_file_abs = root.join(new_file_path.as_str());

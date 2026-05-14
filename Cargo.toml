@@ -8,6 +8,7 @@ members = [
     "crates/argyph-graph",
     "crates/argyph-embed",
     "crates/argyph-store",
+    "crates/argyph-locate",
     "crates/argyph-pack",
     "crates/argyph-mcp",
     "crates/argyph-cli",

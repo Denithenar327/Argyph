@@ -48,6 +48,12 @@ pub trait Store: Send + Sync {
     /// Remove a file from the index.
     async fn delete_file(&self, path: &Utf8Path) -> Result<()>;
 
+    /// Get the SQLite rowid for a file by path.
+    async fn get_file_id(&self, path: &Utf8Path) -> Result<Option<i64>>;
+
+    /// Fetch a FileEntry by its rowid.
+    async fn get_file_by_id(&self, id: i64) -> Result<Option<FileEntry>>;
+
     /// Insert or replace symbol rows. Idempotent — re-running with the same
     /// symbol IDs updates the rows.
     async fn upsert_symbols(&self, symbols: &[Symbol]) -> Result<()>;
@@ -217,6 +223,7 @@ mod tests {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn make_edge(
         from_file: &str,
         from_name: &str,
@@ -821,7 +828,7 @@ mod tests {
 
         // Query similar to -1.0 should have high cosine similarity
         let hits = store
-            .search_vectors(&vec![-1.0; 3], 1, &SearchFilter::default())
+            .search_vectors(&[-1.0; 3], 1, &SearchFilter::default())
             .await
             .unwrap();
         assert_eq!(hits.len(), 1);
@@ -1073,7 +1080,7 @@ mod tests {
             ..Default::default()
         };
         let hits = store
-            .search_vectors(&vec![1.0; 3], 10, &rust_filter)
+            .search_vectors(&[1.0; 3], 10, &rust_filter)
             .await
             .unwrap();
         assert_eq!(hits.len(), 1);
@@ -1114,7 +1121,7 @@ mod tests {
     async fn empty_vector_search_on_empty_store() {
         let store = open_mem();
         let hits = store
-            .search_vectors(&vec![0.5; 4], 10, &SearchFilter::default())
+            .search_vectors(&[0.5; 4], 10, &SearchFilter::default())
             .await
             .unwrap();
         assert!(hits.is_empty());
