@@ -22,10 +22,9 @@ pub struct LocateResponse {
     pub error: Option<McpErrorBody>,
 }
 
-
-
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct SpanData {
+    pub node_id: String,
     pub file: String,
     pub byte_range: (u32, u32),
     pub line_range: (u32, u32),
@@ -89,6 +88,7 @@ pub async fn handle(
                     resp.spans
                         .into_iter()
                         .map(|s| SpanData {
+                            node_id: s.node_id,
                             file: s.file,
                             byte_range: s.byte_range,
                             line_range: s.line_range,

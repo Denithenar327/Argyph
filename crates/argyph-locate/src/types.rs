@@ -34,6 +34,7 @@ pub struct Response {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Span {
+    pub node_id: String,
     pub file: String,
     pub byte_range: (u32, u32),
     pub line_range: (u32, u32),

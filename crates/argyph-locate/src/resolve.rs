@@ -155,7 +155,9 @@ async fn record_to_span(
         bytes: file_size,
     };
 
+    let node_id = format!("{}:{}:{}", file_path, rec.byte_range.0, rec.byte_range.1);
     Ok(Span {
+        node_id,
         file: file_path,
         byte_range: rec.byte_range,
         line_range: rec.line_range,
