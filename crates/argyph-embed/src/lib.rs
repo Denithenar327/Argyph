@@ -53,6 +53,35 @@ pub fn build(provider: Provider, config: config::EmbedConfig) -> Result<Arc<dyn 
     }
 }
 
+pub struct NullEmbedder;
+
+impl Default for NullEmbedder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl NullEmbedder {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+#[async_trait::async_trait]
+impl Embedder for NullEmbedder {
+    fn dimension(&self) -> usize {
+        1
+    }
+
+    fn model_id(&self) -> &str {
+        "null"
+    }
+
+    async fn embed(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+        Ok(texts.iter().map(|_| vec![0.0]).collect())
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {

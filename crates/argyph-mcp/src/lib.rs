@@ -168,6 +168,18 @@ impl ArgyphMcp {
         let response = tools::locate::handle(&self.supervisor, &self.root, req).await;
         Json(response)
     }
+
+    #[tool(
+        name = "locate_smart",
+        description = "AI-guided multi-step locate that delegates to sub-tools. Disabled unless locate_smart.enabled is set."
+    )]
+    async fn locate_smart(
+        &self,
+        Parameters(req): Parameters<tools::locate_smart::LocateSmartRequest>,
+    ) -> Json<tools::locate_smart::LocateSmartResponse> {
+        let response = tools::locate_smart::handle(&self.supervisor, &self.root, req).await;
+        Json(response)
+    }
 }
 
 #[tool_handler]

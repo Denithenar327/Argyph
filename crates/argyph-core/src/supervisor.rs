@@ -21,6 +21,7 @@ use crate::tiers::{self, Tier2Progress, TierState};
 pub struct Supervisor {
     #[allow(dead_code)]
     config: Arc<Config>,
+    root: Utf8PathBuf,
     index: Arc<Index>,
     tier_state: Arc<RwLock<TierState>>,
     tasks: Mutex<JoinSet<()>>,
@@ -58,6 +59,7 @@ impl Supervisor {
 
         let sup = Self {
             config: Arc::new(config),
+            root,
             index,
             tier_state,
             tasks: Mutex::new(JoinSet::new()),
@@ -72,7 +74,7 @@ impl Supervisor {
         let (tier1_5_start_tx, tier1_5_start_rx) = tokio::sync::oneshot::channel::<()>();
 
         // Tier 1 — parse symbols, create chunks
-        let root_for_t1 = root.clone();
+        let root_for_t1 = sup.root.clone();
         let store_for_t1 = Arc::clone(&store_clone);
         let tier_for_t1 = Arc::clone(&tier_state_clone);
         sup.spawn(async move {
@@ -94,7 +96,7 @@ impl Supervisor {
 
         // Tier 1.5 — structural indexing (starts after Tier 1, parallel with Tier 2)
         {
-            let root_for_t1_5 = root.clone();
+            let root_for_t1_5 = sup.root.clone();
             let store_for_t1_5 = Arc::clone(&store_clone);
             let tier_for_t1_5 = Arc::clone(&tier_state_clone);
             let max_bytes = sup.config.locate.max_file_bytes;
@@ -201,6 +203,14 @@ impl Supervisor {
 
     pub fn embedder(&self) -> Option<Arc<dyn Embedder>> {
         self.embedder.get().cloned()
+    }
+
+    pub fn config(&self) -> &Config {
+        &self.config
+    }
+
+    pub fn root(&self) -> &Utf8PathBuf {
+        &self.root
     }
 
     pub async fn get_tier_state(&self) -> TierState {
