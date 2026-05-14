@@ -30,8 +30,10 @@ struct Fixture {
 
 fn setup_fixture() -> Fixture {
     let dir = tempfile::tempdir().unwrap();
-    let src =
-        std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/locate"));
+    let src = std::path::Path::new(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/locate"
+    ));
     let dst = dir.path().join("repo");
     copy_dir_all(src, &dst).unwrap();
     Fixture {
@@ -53,13 +55,7 @@ fn recv(r: &mut BufReader<impl std::io::Read>) -> serde_json::Value {
     serde_json::from_str(&line).unwrap()
 }
 
-fn spawn_serve(
-    root: &std::path::Path,
-) -> (
-    Child,
-    BufReader<ChildStdout>,
-    ChildStdin,
-) {
+fn spawn_serve(root: &std::path::Path) -> (Child, BufReader<ChildStdout>, ChildStdin) {
     let bin = env!("CARGO_BIN_EXE_argyph");
     let mut child = Command::new(bin)
         .arg("serve")
@@ -118,13 +114,7 @@ fn call_tool(
 
 fn wait_ready(stdin: &mut ChildStdin, stdout: &mut BufReader<ChildStdout>) {
     for _ in 0..300 {
-        let v = call_tool(
-            stdin,
-            stdout,
-            99,
-            "get_index_status",
-            serde_json::json!({}),
-        );
+        let v = call_tool(stdin, stdout, 99, "get_index_status", serde_json::json!({}));
         let content = &v["result"]["content"];
         if let Some(arr) = content.as_array() {
             if let Some(text) = arr[0]["text"].as_str() {
@@ -272,19 +262,11 @@ fn locate_invalid_argument_when_no_query_or_path() {
     handshake(&mut stdin, &mut stdout);
     wait_ready(&mut stdin, &mut stdout);
 
-    let resp = call_tool(
-        &mut stdin,
-        &mut stdout,
-        2,
-        "locate",
-        serde_json::json!({}),
-    );
+    let resp = call_tool(&mut stdin, &mut stdout, 2, "locate", serde_json::json!({}));
     let body = parse_tool_result(&resp);
 
     let error_obj = body["error"].as_object();
-    let code = error_obj
-        .and_then(|e| e["code"].as_str())
-        .unwrap_or("");
+    let code = error_obj.and_then(|e| e["code"].as_str()).unwrap_or("");
     assert!(
         error_obj.is_some() || code.contains("InvalidPath") || code.contains("Internal"),
         "Expected error, got: {resp:?}"

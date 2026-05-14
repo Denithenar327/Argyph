@@ -1,7 +1,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use argyph_locate::path;
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 fn bench_path_parse(c: &mut Criterion) {
     let heading = "docs/billing.md > Enterprise";
@@ -31,7 +31,11 @@ fn bench_strategy_dispatch(c: &mut Criterion) {
 
     c.bench_function("locate_strategy_path_only", |b| {
         b.iter(|| {
-            black_box(strategy::plan(None, Some("Cargo.toml > package.name"), true));
+            black_box(strategy::plan(
+                None,
+                Some("Cargo.toml > package.name"),
+                true,
+            ));
         });
     });
 

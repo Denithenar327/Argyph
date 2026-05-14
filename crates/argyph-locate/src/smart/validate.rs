@@ -43,13 +43,14 @@ impl SpanHistory {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use crate::types::{ExpandTo, Span};
 
     fn fake(file: &str, start: u32, end: u32) -> Span {
         Span {
-            node_id: format!("{}:{}:{}", file, start, end),
+            node_id: format!("{file}:{start}:{end}"),
             file: file.into(),
             byte_range: (start, end),
             line_range: (1, 1),

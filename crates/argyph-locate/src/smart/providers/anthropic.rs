@@ -1,7 +1,5 @@
 //! Anthropic Messages API provider.
 
-#![cfg(feature = "smart")]
-
 use crate::smart::model::{LocateModel, LocateModelError, Message, ModelStep, Role};
 use crate::smart::providers::openai::parse_model_output;
 use async_trait::async_trait;

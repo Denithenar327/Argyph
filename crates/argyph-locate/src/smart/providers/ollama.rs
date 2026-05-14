@@ -1,8 +1,6 @@
 //! Ollama / llama.cpp-compatible local provider.
 //! Uses the OpenAI-compatible chat completions endpoint.
 
-#![cfg(feature = "smart")]
-
 use crate::smart::model::{LocateModel, LocateModelError, Message, ModelStep, Role};
 use crate::smart::providers::openai::parse_model_output;
 use async_trait::async_trait;

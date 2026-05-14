@@ -1,7 +1,5 @@
 //! OpenAI / OpenAI-compatible provider.
 
-#![cfg(feature = "smart")]
-
 use crate::smart::model::{LocateModel, LocateModelError, Message, ModelStep, Role};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -121,10 +119,11 @@ pub(crate) fn parse_model_output(raw: &str) -> Result<ModelStep, LocateModelErro
 
 fn rand_id() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_else(|_| std::time::Duration::ZERO).as_nanos().to_string()
+    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or(std::time::Duration::ZERO).as_nanos().to_string()
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     #[test] fn parses_tool_call() {

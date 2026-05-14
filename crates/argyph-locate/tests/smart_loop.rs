@@ -1,6 +1,8 @@
 //! Loop-driver tests using MockModel.
 //! These exercise the bounded ReAct loop without requiring live infrastructure.
 
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 use argyph_locate::smart::{
     run, ModelStep, SmartError, SmartRequest, SubToolCtx,
 };

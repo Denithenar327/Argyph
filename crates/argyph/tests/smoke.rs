@@ -122,7 +122,7 @@ fn mcp_initialize_and_list_tools() {
     let tools = list_resp["result"]["tools"]
         .as_array()
         .expect("tools missing");
-    assert_eq!(tools.len(), 12, "expected 12 tools, got {tools:?}");
+    assert_eq!(tools.len(), 13, "expected 13 tools, got {tools:?}");
     let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
     assert!(names.contains(&"get_index_status"));
     assert!(names.contains(&"get_repo_overview"));

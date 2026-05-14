@@ -150,7 +150,7 @@ mod tests {
         for loc in cases {
             let s = loc.to_string();
             let reparsed = parse(&s);
-            assert_eq!(reparsed, loc, "roundtrip failed for {}", s);
+            assert_eq!(reparsed, loc, "roundtrip failed for {s}");
         }
     }
 }
