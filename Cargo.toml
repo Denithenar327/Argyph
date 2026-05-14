@@ -11,6 +11,7 @@ members = [
     "crates/argyph-pack",
     "crates/argyph-mcp",
     "crates/argyph-cli",
+    "benches",
 ]
 
 [workspace.package]
@@ -21,6 +22,7 @@ repository = "https://github.com/Ezzy1630/argyph"
 authors = ["Ezzy1630"]
 
 [workspace.dependencies]
+criterion = "0.5"
 thiserror = "2"
 
 [workspace.metadata.dist]

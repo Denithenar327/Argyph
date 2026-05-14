@@ -1,0 +1,29 @@
+[package]
+name = "argyph-benches"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+argyph-fs = { path = "../crates/argyph-fs" }
+argyph-parse = { path = "../crates/argyph-parse" }
+argyph-pack = { path = "../crates/argyph-pack" }
+camino = "1"
+
+[lib]
+name = "argyph_benches"
+path = "src/lib.rs"
+
+[dev-dependencies]
+criterion.workspace = true
+tempfile = "3"
+walkdir = "2"
+tiktoken-rs = "0.6"
+
+[[bench]]
+name = "core"
+path = "core.rs"
+harness = false
