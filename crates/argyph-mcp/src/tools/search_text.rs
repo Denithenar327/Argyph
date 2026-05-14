@@ -114,7 +114,11 @@ pub async fn handle(
     }
 }
 
-fn read_context(root: &Utf8PathBuf, file: &camino::Utf8Path, line: u64) -> (Vec<String>, Vec<String>) {
+fn read_context(
+    root: &Utf8PathBuf,
+    file: &camino::Utf8Path,
+    line: u64,
+) -> (Vec<String>, Vec<String>) {
     let full = root.join(file.as_str());
     let Ok(content) = std::fs::read_to_string(full.as_str()) else {
         return (vec![], vec![]);
@@ -125,8 +129,14 @@ fn read_context(root: &Utf8PathBuf, file: &camino::Utf8Path, line: u64) -> (Vec<
         return (vec![], vec![]);
     }
     let ctx_start = idx.saturating_sub(1);
-    let before: Vec<String> = all_lines[ctx_start..idx].iter().map(|s| s.to_string()).collect();
+    let before: Vec<String> = all_lines[ctx_start..idx]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     let after_end = (idx + 2).min(all_lines.len());
-    let after: Vec<String> = all_lines[idx + 1..after_end].iter().map(|s| s.to_string()).collect();
+    let after: Vec<String> = all_lines[idx + 1..after_end]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     (before, after)
 }

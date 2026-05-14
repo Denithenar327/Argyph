@@ -1,5 +1,6 @@
 mod common;
 pub mod find_definition;
+pub mod locate;
 pub mod find_references;
 pub mod get_callees;
 pub mod get_callers;

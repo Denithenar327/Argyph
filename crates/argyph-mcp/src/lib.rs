@@ -156,6 +156,18 @@ impl ArgyphMcp {
         let response = tools::pack_repo::handle(&self.supervisor, &self.root, req).await;
         Json(response)
     }
+
+    #[tool(
+        name = "locate",
+        description = "Return the smallest natural span containing the requested structured locator or natural-language query. Works on code, markdown, JSON, YAML, TOML, CSV."
+    )]
+    async fn locate(
+        &self,
+        Parameters(req): Parameters<tools::locate::LocateRequest>,
+    ) -> Json<tools::locate::LocateResponse> {
+        let response = tools::locate::handle(&self.supervisor, &self.root, req).await;
+        Json(response)
+    }
 }
 
 #[tool_handler]

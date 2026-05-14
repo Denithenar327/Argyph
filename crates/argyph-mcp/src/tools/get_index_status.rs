@@ -38,6 +38,7 @@ pub struct Tiers {
     pub files: TierInfo,
     pub symbols: TierInfo,
     pub embeddings: TierInfo,
+    pub structural: TierInfo,
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
@@ -55,6 +56,8 @@ impl Response {
         symbol_count: u64,
         embeddings_ready: bool,
         embedded_count: u64,
+        structural_ready: bool,
+        structural_count: u64,
     ) -> Self {
         Self {
             root: Some(root.to_string()),
@@ -72,6 +75,10 @@ impl Response {
                 embeddings: TierInfo {
                     ready: embeddings_ready,
                     count: embedded_count,
+                },
+                structural: TierInfo {
+                    ready: structural_ready,
+                    count: structural_count,
                 },
             }),
             watcher: Some(WatcherInfo { active: false }),
@@ -107,6 +114,13 @@ pub async fn handle(supervisor: &Arc<Supervisor>, root: &Utf8PathBuf) -> Respons
         _ => 0,
     };
 
+    let (structural_ready, structural_count) = match &tier_state {
+        argyph_core::TierState::Tier1_5 {
+            structural_files, ..
+        } => (true, *structural_files as u64),
+        _ => (false, 0),
+    };
+
     let index = supervisor.index();
     let file_count = index.status().await.map(|s| s.file_count).unwrap_or(0);
 
@@ -118,5 +132,7 @@ pub async fn handle(supervisor: &Arc<Supervisor>, root: &Utf8PathBuf) -> Respons
         symbol_count,
         embeddings_ready,
         embedded_count,
+        structural_ready,
+        structural_count,
     )
 }
