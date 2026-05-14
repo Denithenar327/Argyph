@@ -226,6 +226,7 @@ pub async fn resolve_hybrid(
     expand_synthetic_spans(store, root, &merged, max_bytes).await
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn resolve_scoped_semantic(
     store: Arc<dyn Store>,
     root: &Path,
@@ -310,6 +311,7 @@ struct SyntheticSpan {
     byte_start: u32,
     byte_end: u32,
     score: f32,
+    #[allow(dead_code)]
     kind: String,
     node_record: Option<StructuralNodeRecord>,
 }

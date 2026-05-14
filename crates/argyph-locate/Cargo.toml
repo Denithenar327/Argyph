@@ -15,6 +15,7 @@ argyph-fs = { path = "../argyph-fs" }
 argyph-embed = { path = "../argyph-embed" }
 anyhow = "1"
 camino = "1"
+schemars = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror.workspace = true

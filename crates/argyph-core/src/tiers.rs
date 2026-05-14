@@ -20,6 +20,7 @@ pub enum TierState {
     Offline,
     Tier0 { files_indexed: usize },
     Tier1 { symbols_indexed: usize },
+    Tier1_5 { structural_files: usize },
     Tier2 { embedded: usize, total: usize },
     Ready,
 }
@@ -31,6 +32,7 @@ impl fmt::Display for TierState {
             Self::Offline => write!(f, "offline"),
             Self::Tier0 { .. } => write!(f, "tier0"),
             Self::Tier1 { .. } => write!(f, "tier1"),
+            Self::Tier1_5 { .. } => write!(f, "tier1_5"),
             Self::Tier2 { .. } => write!(f, "tier2"),
             Self::Ready => write!(f, "ready"),
         }
@@ -41,7 +43,11 @@ impl TierState {
     pub fn is_ready(&self) -> bool {
         matches!(
             self,
-            Self::Tier0 { .. } | Self::Tier1 { .. } | Self::Tier2 { .. } | Self::Ready
+            Self::Tier0 { .. }
+                | Self::Tier1 { .. }
+                | Self::Tier1_5 { .. }
+                | Self::Tier2 { .. }
+                | Self::Ready
         )
     }
 
@@ -49,7 +55,7 @@ impl TierState {
         match self {
             Self::Offline => 0,
             Self::Tier0 { .. } => 1,
-            Self::Tier1 { .. } => 2,
+            Self::Tier1 { .. } | Self::Tier1_5 { .. } => 2,
             Self::Tier2 { .. } | Self::Ready => 3,
         }
     }
@@ -143,6 +149,70 @@ pub async fn run_tier1(root: &Utf8Path, store: &dyn Store) -> Result<u64> {
     );
 
     Ok(total_symbols)
+}
+
+#[tracing::instrument(skip(store), fields(root = %root.as_str()))]
+pub async fn run_tier1_5(store: &dyn Store, root: &Utf8Path, max_file_bytes: u64) -> Result<usize> {
+    use argyph_parse::structural::{self, StructuralNode};
+    use argyph_store::StructuralNodeRecord;
+
+    tracing::info!("starting Tier 1.5 structural indexing");
+    let files = store.list_files().await?;
+
+    let candidates: Vec<_> = files
+        .into_iter()
+        .filter(|f| f.size <= max_file_bytes && f.language.is_some())
+        .collect();
+
+    let mut count = 0usize;
+    for f in &candidates {
+        let path = root.join(f.path.as_str());
+        let Ok(source) = std::fs::read_to_string(path.as_str()) else {
+            continue;
+        };
+
+        let Some(lang) = f.language else { continue; };
+        let file_key = f.path.as_str().len() as u64;
+        let nodes: Vec<StructuralNode> = match lang {
+            Language::Markdown => structural::markdown::parse(file_key, &source),
+            Language::Json => structural::json::parse(file_key, &source),
+            Language::Yaml => structural::yaml::parse(file_key, &source),
+            Language::Toml => structural::toml_parser::parse(file_key, &source),
+            Language::Csv => structural::csv::parse(file_key, &source),
+            _ => continue,
+        };
+
+        if nodes.is_empty() {
+            continue;
+        }
+
+        let file_id = match store.get_file_id(&f.path).await {
+            Ok(Some(id)) => id,
+            _ => continue,
+        };
+
+        let records: Vec<StructuralNodeRecord> = nodes
+            .into_iter()
+            .map(|n| StructuralNodeRecord {
+                id: n.id.0 as i64,
+                file_id,
+                kind: format!("{:?}", n.kind),
+                label: n.label,
+                path_joined: n.path.join("/"),
+                path: n.path,
+                byte_range: (n.byte_range.0 as u32, n.byte_range.1 as u32),
+                line_range: n.line_range,
+                parent_id: n.parent.map(|p| p.0 as i64),
+                depth: n.depth as u16,
+            })
+            .collect();
+
+        store.upsert_structural_nodes(file_id, &records).await?;
+        count += 1;
+    }
+
+    tracing::info!(structural_files = count, "Tier 1.5 complete");
+    Ok(count)
 }
 
 /// Progress update emitted during Tier 2 embedding.
@@ -400,6 +470,13 @@ mod tests {
             "tier1"
         );
         assert_eq!(
+            TierState::Tier1_5 {
+                structural_files: 5
+            }
+            .to_string(),
+            "tier1_5"
+        );
+        assert_eq!(
             TierState::Tier2 {
                 embedded: 25,
                 total: 50
@@ -415,6 +492,10 @@ mod tests {
         assert!(!TierState::Offline.is_ready());
         assert!(TierState::Tier0 { files_indexed: 0 }.is_ready());
         assert!(TierState::Tier1 { symbols_indexed: 1 }.is_ready());
+        assert!(TierState::Tier1_5 {
+            structural_files: 1
+        }
+        .is_ready());
         assert!(TierState::Tier2 {
             embedded: 1,
             total: 2
@@ -428,6 +509,13 @@ mod tests {
         assert_eq!(TierState::Offline.tier_number(), 0);
         assert_eq!(TierState::Tier0 { files_indexed: 0 }.tier_number(), 1);
         assert_eq!(TierState::Tier1 { symbols_indexed: 0 }.tier_number(), 2);
+        assert_eq!(
+            TierState::Tier1_5 {
+                structural_files: 0
+            }
+            .tier_number(),
+            2
+        );
         assert_eq!(
             TierState::Tier2 {
                 embedded: 0,

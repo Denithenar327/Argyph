@@ -503,8 +503,7 @@ mod tests {
         let mut files = HashMap::new();
         // A large file that can't fit under a small budget — use varied
         // words so the BPE tokenizer does not compress them into few tokens.
-        let big_content: String = std::iter::repeat("fn unique_word_")
-            .take(200)
+        let big_content: String = std::iter::repeat_n("fn unique_word_", 200)
             .collect::<Vec<_>>()
             .join("\n");
         files.insert(path("src/big.rs"), big_content);

@@ -1,0 +1,4 @@
+{
+  "database": { "host": "localhost", "timeout": 30 },
+  "log_level": "info"
+}

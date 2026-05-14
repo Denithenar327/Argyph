@@ -11,18 +11,18 @@ use crate::error::{ErrorCode, McpErrorBody};
 pub use argyph_locate::Request as LocateRequest;
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
-#[serde(untagged)]
-pub enum LocateResponse {
-    Ok(ResponseData),
-    Err(McpErrorBody),
+pub struct LocateResponse {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spans: Option<Vec<SpanData>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub strategy_used: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub index_coverage: Option<IndexCoverageData>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<McpErrorBody>,
 }
 
-#[derive(Debug, Clone, Serialize, JsonSchema)]
-pub struct ResponseData {
-    pub spans: Vec<SpanData>,
-    pub strategy_used: String,
-    pub index_coverage: IndexCoverageData,
-}
+
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct SpanData {
@@ -56,49 +56,6 @@ pub struct IndexCoverageData {
     pub tier_2: String,
 }
 
-fn strategy_to_string(s: &argyph_locate::Strategy) -> String {
-    serde_json::to_value(s)
-        .ok()
-        .and_then(|v| v.as_str().map(String::from))
-        .unwrap_or_else(|| format!("{:?}", s).to_lowercase())
-}
-
-fn convert_response(resp: argyph_locate::Response) -> ResponseData {
-    ResponseData {
-        spans: resp
-            .spans
-            .into_iter()
-            .map(|s| SpanData {
-                file: s.file,
-                byte_range: s.byte_range,
-                line_range: s.line_range,
-                kind: s.kind,
-                path: s.path,
-                content: s.content,
-                score: s.score,
-                truncated: s.truncated,
-                expand_to: ExpandToData {
-                    parent: s.expand_to.parent.map(|p| ExpandTargetData {
-                        node_id: p.node_id,
-                        label: p.label,
-                        bytes: p.bytes,
-                    }),
-                    file: s.expand_to.file.map(|f| ExpandTargetData {
-                        node_id: f.node_id,
-                        label: f.label,
-                        bytes: f.bytes,
-                    }),
-                },
-            })
-            .collect(),
-        strategy_used: strategy_to_string(&resp.strategy_used),
-        index_coverage: IndexCoverageData {
-            tier_1_5: resp.index_coverage.tier_1_5,
-            tier_2: resp.index_coverage.tier_2,
-        },
-    }
-}
-
 pub async fn handle(
     supervisor: &Arc<Supervisor>,
     root: &Utf8PathBuf,
@@ -107,17 +64,62 @@ pub async fn handle(
     let store = supervisor.store();
 
     let Some(embedder) = supervisor.embedder() else {
-        return LocateResponse::Err(McpErrorBody {
-            code: ErrorCode::IndexNotReady,
-            message: "Embedder not ready".into(),
-            retryable: true,
-            retry_after_ms: Some(1000),
-            correlation_id: None,
-        });
+        return LocateResponse {
+            spans: None,
+            strategy_used: None,
+            index_coverage: None,
+            error: Some(McpErrorBody {
+                code: ErrorCode::IndexNotReady,
+                message: "Embedder not ready".into(),
+                retryable: true,
+                retry_after_ms: Some(1000),
+                correlation_id: None,
+            }),
+        };
     };
 
     match argyph_locate::locate(store, embedder, root.as_std_path(), req).await {
-        Ok(resp) => LocateResponse::Ok(convert_response(resp)),
+        Ok(resp) => {
+            let strategy_str = serde_json::to_value(resp.strategy_used)
+                .ok()
+                .and_then(|v| v.as_str().map(String::from))
+                .unwrap_or_else(|| format!("{:?}", resp.strategy_used).to_lowercase());
+            LocateResponse {
+                spans: Some(
+                    resp.spans
+                        .into_iter()
+                        .map(|s| SpanData {
+                            file: s.file,
+                            byte_range: s.byte_range,
+                            line_range: s.line_range,
+                            kind: s.kind,
+                            path: s.path,
+                            content: s.content,
+                            score: s.score,
+                            truncated: s.truncated,
+                            expand_to: ExpandToData {
+                                parent: s.expand_to.parent.map(|p| ExpandTargetData {
+                                    node_id: p.node_id,
+                                    label: p.label,
+                                    bytes: p.bytes,
+                                }),
+                                file: s.expand_to.file.map(|f| ExpandTargetData {
+                                    node_id: f.node_id,
+                                    label: f.label,
+                                    bytes: f.bytes,
+                                }),
+                            },
+                        })
+                        .collect(),
+                ),
+                strategy_used: Some(strategy_str),
+                index_coverage: Some(IndexCoverageData {
+                    tier_1_5: resp.index_coverage.tier_1_5,
+                    tier_2: resp.index_coverage.tier_2,
+                }),
+                error: None,
+            }
+        }
         Err(e) => {
             let msg = e.to_string();
             let code = if msg.starts_with("INVALID_ARGUMENT") {
@@ -127,13 +129,18 @@ pub async fn handle(
             } else {
                 ErrorCode::Internal
             };
-            LocateResponse::Err(McpErrorBody {
-                code,
-                message: msg,
-                retryable: false,
-                retry_after_ms: None,
-                correlation_id: None,
-            })
+            LocateResponse {
+                spans: None,
+                strategy_used: None,
+                index_coverage: None,
+                error: Some(McpErrorBody {
+                    code,
+                    message: msg,
+                    retryable: false,
+                    retry_after_ms: None,
+                    correlation_id: None,
+                }),
+            }
         }
     }
 }

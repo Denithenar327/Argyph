@@ -16,6 +16,9 @@ pub struct Config {
 
     #[serde(default)]
     pub pack: PackConfig,
+
+    #[serde(default)]
+    pub locate: LocateConfig,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -37,6 +40,24 @@ pub struct SearchConfig {
 pub struct PackConfig {
     #[serde(default = "default_token_budget")]
     pub default_token_budget: u64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct LocateConfig {
+    #[serde(default = "default_locate_max_file_bytes")]
+    pub max_file_bytes: u64,
+}
+
+impl Default for LocateConfig {
+    fn default() -> Self {
+        Self {
+            max_file_bytes: default_locate_max_file_bytes(),
+        }
+    }
+}
+
+fn default_locate_max_file_bytes() -> u64 {
+    10_485_760
 }
 
 fn default_exclude() -> Vec<String> {
@@ -68,6 +89,7 @@ impl Default for Config {
             pack: PackConfig {
                 default_token_budget: default_token_budget(),
             },
+            locate: LocateConfig::default(),
         }
     }
 }

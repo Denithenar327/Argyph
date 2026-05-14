@@ -6,6 +6,10 @@ pub enum Language {
     Python,
     JavaScript,
     Markdown,
+    Json,
+    Yaml,
+    Toml,
+    Csv,
 }
 
 impl std::fmt::Display for Language {
@@ -16,6 +20,10 @@ impl std::fmt::Display for Language {
             Self::Python => write!(f, "python"),
             Self::JavaScript => write!(f, "javascript"),
             Self::Markdown => write!(f, "markdown"),
+            Self::Json => write!(f, "json"),
+            Self::Yaml => write!(f, "yaml"),
+            Self::Toml => write!(f, "toml"),
+            Self::Csv => write!(f, "csv"),
         }
     }
 }
@@ -34,6 +42,10 @@ impl Language {
             "jsx" => Some(Self::JavaScript),
             "py" => Some(Self::Python),
             "md" => Some(Self::Markdown),
+            "json" => Some(Self::Json),
+            "yaml" | "yml" => Some(Self::Yaml),
+            "toml" => Some(Self::Toml),
+            "csv" => Some(Self::Csv),
             _ => None,
         }
     }
@@ -52,12 +64,16 @@ mod tests {
         assert_eq!(Language::from_extension("jsx"), Some(Language::JavaScript));
         assert_eq!(Language::from_extension("py"), Some(Language::Python));
         assert_eq!(Language::from_extension("md"), Some(Language::Markdown));
+        assert_eq!(Language::from_extension("json"), Some(Language::Json));
+        assert_eq!(Language::from_extension("yaml"), Some(Language::Yaml));
+        assert_eq!(Language::from_extension("yml"), Some(Language::Yaml));
+        assert_eq!(Language::from_extension("toml"), Some(Language::Toml));
+        assert_eq!(Language::from_extension("csv"), Some(Language::Csv));
     }
 
     #[test]
     fn unknown_extension() {
-        assert_eq!(Language::from_extension("toml"), None);
-        assert_eq!(Language::from_extension("json"), None);
+        assert_eq!(Language::from_extension("png"), None);
         assert_eq!(Language::from_extension(""), None);
     }
 }
