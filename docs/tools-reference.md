@@ -72,6 +72,9 @@ Stable error codes:
 | `SYMBOL_NOT_FOUND`        | A graph query was given a symbol that doesn't exist in the index.         |
 | `SYMBOL_AMBIGUOUS`        | Multiple symbols match; caller must disambiguate via `language_hint`/`file`. |
 | `INTERNAL`                | Unexpected internal error. `retryable: false`. File a bug.                |
+| `LOCATE_SMART_DISABLED`  | `locate_smart` is not enabled in the configuration. `retryable: false`.     |
+| `LOCATE_SMART_BUDGET_EXCEEDED` | The ReAct loop exceeded its step or token budget. `retryable: false`. |
+| `PROVIDER_ERROR`          | LLM provider call failed (auth, rate limit, network). `retryable: true`.   |
 
 ---
 
@@ -343,6 +346,52 @@ On error, `spans` is null and `error` is populated:
 ```
 
 **Errors:** `INVALID_PATH` for invalid arguments. `INDEX_NOT_READY` if the required tier isn't built. `INTERNAL` for unexpected errors.
+
+### `locate_smart`
+
+Retrieval subagent that runs a bounded multi-step search loop. Requires `[locate_smart]` configuration; returns `LOCATE_SMART_DISABLED` otherwise.
+
+**Tier required:** 1.5 + configured LLM provider.
+
+**Request:**
+
+```json
+{
+  "query": "section about custom limits for enterprise pricing",
+  "max_steps": 4,
+  "max_output_tokens": 1024
+}
+```
+
+- `query`: required. Natural-language query.
+- `max_steps`: int, default 4, max 10. Maximum ReAct loop iterations.
+- `max_output_tokens`: int, default 1024. Token budget for the model response.
+
+**Response (success):**
+
+```json
+{
+  "spans": [...],
+  "strategy_used": "smart",
+  "reasoning_summary": "Found enterprise pricing section via locate",
+  "steps_taken": 2,
+  "index_coverage": {"tier_1_5": "ready", "tier_2": "ready"}
+}
+```
+
+**Response (disabled):**
+
+```json
+{
+  "error": {
+    "code": "LOCATE_SMART_DISABLED",
+    "message": "locate_smart is disabled in this Argyph configuration",
+    "retryable": false
+  }
+}
+```
+
+**Errors:** `LOCATE_SMART_DISABLED`, `LOCATE_SMART_BUDGET_EXCEEDED`, `PROVIDER_ERROR`, `INDEX_NOT_READY`, `INTERNAL`.
 
 ---
 

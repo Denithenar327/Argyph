@@ -109,9 +109,42 @@ After the first index, the on-disk `.argyph/` directory persists and only change
 | `pack_repo`           | Token-budgeted repo flattening (XML or markdown)         | 0+1           |
 | `read_file_range`     | Bounded file read by symbol range                        | 0             |
 | `locate`              | Smallest natural span containing the target              | 1.5           |
+| `locate_smart`        | Retrieval subagent (opt-in; needs provider config)     | 1.5           |
 | `reindex`             | Force a full or partial reindex                          | —             |
 
 Full schema reference: [docs/tools-reference.md](docs/tools-reference.md).
+
+---
+
+## Optional features
+
+### `locate_smart` — retrieval subagent
+
+`locate_smart` is an opt-in tool that runs a bounded multi-step retrieval loop using an LLM provider. It's **disabled by default**; enable it in `.argyph/config.toml`:
+
+```toml
+[locate_smart]
+enabled  = true
+provider = "openai"        # or "anthropic" | "ollama"
+model    = "gpt-4o-mini"
+# endpoint = "http://localhost:11434"   # only for local providers
+```
+
+Or via env:
+
+```bash
+ARGYPH_LOCATE_SMART_ENABLED=1
+ARGYPH_LOCATE_SMART_PROVIDER=anthropic
+ARGYPH_LOCATE_SMART_MODEL=claude-haiku-4-5
+```
+
+When disabled, calls to `locate_smart` return `LOCATE_SMART_DISABLED` immediately and no provider keys are required.
+
+Build with the smart feature:
+
+```bash
+cargo install argyph --features smart
+```
 
 ---
 

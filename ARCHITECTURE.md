@@ -46,6 +46,10 @@ The single most important design decision in Argyph. Each tier is independently 
 - **What it produces:** Embeddings for each chunk, stored in LanceDB. Hybrid BM25 + vector search via reciprocal rank fusion.
 - **Tools enabled:** `search_semantic`. Returns partial-index results with `index_coverage` field while building.
 
+### Optional layer — `locate_smart`
+
+Sits above the three tiers. An in-process bounded ReAct loop that dispatches to the four read-only sub-tools (`locate`, `read_file_range`, `get_symbol_outline`, `get_repo_overview`). Off by default. When enabled, validates that every span returned to the caller came from a `locate` call made earlier in the same loop — so the model cannot fabricate byte ranges. Provider abstraction (`LocateModel` trait) supports OpenAI, Anthropic, and Ollama-compatible local endpoints.
+
 ### Why this matters
 
 Most agent queries are structural — "where is `parseConfig` defined?", "what calls `validateUser`?", "show me imports of this file". Those are Tier 1 queries served in milliseconds. Embeddings are only needed for fuzzy semantic queries ("find code that handles auth"). Even on a large repo where Tier 2 takes 10 minutes, the server feels instant for ~70% of real queries.
