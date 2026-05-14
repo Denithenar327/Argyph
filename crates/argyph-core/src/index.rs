@@ -78,10 +78,7 @@ pub struct Index {
 }
 
 impl Index {
-    pub(crate) fn new(
-        store: Arc<dyn Store>,
-        embedder: Arc<OnceLock<Arc<dyn Embedder>>>,
-    ) -> Self {
+    pub(crate) fn new(store: Arc<dyn Store>, embedder: Arc<OnceLock<Arc<dyn Embedder>>>) -> Self {
         Self { store, embedder }
     }
 
@@ -175,10 +172,9 @@ impl Index {
         k: usize,
         filter: Option<&argyph_store::search::SearchFilter>,
     ) -> Result<SemanticResult> {
-        let embedder = self
-            .embedder
-            .get()
-            .ok_or_else(|| CoreError::Embed("no embedder configured — cannot perform semantic search".into()))?;
+        let embedder = self.embedder.get().ok_or_else(|| {
+            CoreError::Embed("no embedder configured — cannot perform semantic search".into())
+        })?;
 
         let query_vec = embedder
             .embed_query(query)
@@ -279,13 +275,13 @@ impl Index {
     }
 
     pub async fn pack(&self, root: &Utf8Path, req: &PackRequest) -> Result<PackResult> {
-        let packer = DefaultPacker::new()
-            .map_err(|e| CoreError::Io(std::io::Error::other(e)))?;
+        let packer = DefaultPacker::new().map_err(|e| CoreError::Io(std::io::Error::other(e)))?;
         let ctx = IndexPackContext {
             index: self,
             root: root.to_owned(),
         };
-        packer.pack(req, &ctx)
+        packer
+            .pack(req, &ctx)
             .map_err(|e| CoreError::Io(std::io::Error::other(e)))
     }
 
@@ -365,7 +361,8 @@ impl PackContext for IndexPackContext<'_> {
             PackScope::All => paths,
             PackScope::Paths(requested) => {
                 let requested_set: std::collections::HashSet<_> = requested.iter().collect();
-                paths.into_iter()
+                paths
+                    .into_iter()
                     .filter(|p| requested_set.contains(p))
                     .collect()
             }

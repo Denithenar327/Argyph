@@ -10,6 +10,7 @@ pub struct SymbolOutline {
     pub name: String,
     pub kind: String,
     pub signature: Option<String>,
+    pub range: (u64, u64),
     pub children: Vec<SymbolOutline>,
 }
 
@@ -139,6 +140,7 @@ impl Graph {
                     name: name.to_string(),
                     kind: "symbol".to_string(),
                     signature: None,
+                    range: (0, 0),
                     children: Vec::new(),
                 }
             })

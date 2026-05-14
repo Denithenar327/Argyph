@@ -67,10 +67,7 @@ impl VoyageEmbedder {
     }
 
     fn base_url(&self) -> &str {
-        self.config
-            .base_url
-            .as_deref()
-            .unwrap_or(VOYAGE_BASE_URL)
+        self.config.base_url.as_deref().unwrap_or(VOYAGE_BASE_URL)
     }
 
     fn truncate_text(text: &str) -> String {
@@ -391,12 +388,8 @@ mod tests {
         Mock::given(method("POST"))
             .and(path("/v1/embeddings"))
             .respond_with(move |req: &wiremock::Request| {
-                let body: serde_json::Value =
-                    serde_json::from_slice(&req.body).unwrap_or_default();
-                let input_len = body["input"]
-                    .as_array()
-                    .map(|a| a.len())
-                    .unwrap_or(0);
+                let body: serde_json::Value = serde_json::from_slice(&req.body).unwrap_or_default();
+                let input_len = body["input"].as_array().map(|a| a.len()).unwrap_or(0);
                 let resp = generate_response(input_len);
                 ResponseTemplate::new(200).set_body_json(resp)
             })
@@ -441,8 +434,7 @@ mod tests {
         Mock::given(method("POST"))
             .and(path("/v1/embeddings"))
             .respond_with(move |req: &wiremock::Request| {
-                let body: serde_json::Value =
-                    serde_json::from_slice(&req.body).unwrap_or_default();
+                let body: serde_json::Value = serde_json::from_slice(&req.body).unwrap_or_default();
                 let input_type = body["input_type"].as_str().unwrap_or("");
                 assert_eq!(
                     input_type, "query",

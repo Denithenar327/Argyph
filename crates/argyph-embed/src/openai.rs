@@ -62,10 +62,7 @@ impl OpenAiEmbedder {
     }
 
     fn base_url(&self) -> &str {
-        self.config
-            .base_url
-            .as_deref()
-            .unwrap_or(OPENAI_BASE_URL)
+        self.config.base_url.as_deref().unwrap_or(OPENAI_BASE_URL)
     }
 
     fn truncate_text(text: &str) -> String {
@@ -262,7 +259,9 @@ mod tests {
 
         Mock::given(method("POST"))
             .and(path("/v1/embeddings"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(make_embed_response(expected.clone())))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(make_embed_response(expected.clone())),
+            )
             .expect(1)
             .mount(&mock_server)
             .await;
@@ -337,20 +336,15 @@ mod tests {
         let mock_server = MockServer::start().await;
 
         let generate_response = |count: usize| -> serde_json::Value {
-            let embeddings: Vec<Vec<f32>> =
-                (0..count).map(|_| vec![0.1, 0.2, 0.3]).collect();
+            let embeddings: Vec<Vec<f32>> = (0..count).map(|_| vec![0.1, 0.2, 0.3]).collect();
             make_embed_response(embeddings)
         };
 
         Mock::given(method("POST"))
             .and(path("/v1/embeddings"))
             .respond_with(move |req: &wiremock::Request| {
-                let body: serde_json::Value =
-                    serde_json::from_slice(&req.body).unwrap_or_default();
-                let input_len = body["input"]
-                    .as_array()
-                    .map(|a| a.len())
-                    .unwrap_or(0);
+                let body: serde_json::Value = serde_json::from_slice(&req.body).unwrap_or_default();
+                let input_len = body["input"].as_array().map(|a| a.len()).unwrap_or(0);
                 let resp = generate_response(input_len);
                 ResponseTemplate::new(200).set_body_json(resp)
             })
@@ -397,7 +391,8 @@ mod tests {
         Mock::given(method("POST"))
             .and(path("/v1/embeddings"))
             .respond_with(
-                ResponseTemplate::new(200).set_body_json(make_embed_response(vec![expected.clone()])),
+                ResponseTemplate::new(200)
+                    .set_body_json(make_embed_response(vec![expected.clone()])),
             )
             .expect(1)
             .mount(&mock_server)

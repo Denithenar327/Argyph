@@ -18,7 +18,10 @@ pub struct TokenizedBatch {
 impl BertTokenizer {
     pub fn from_file(path: &Path) -> Result<Self> {
         let inner = Tokenizer::from_file(path).map_err(|e| {
-            EmbedError::Config(format!("failed to load tokenizer from {}: {e}", path.display()))
+            EmbedError::Config(format!(
+                "failed to load tokenizer from {}: {e}",
+                path.display()
+            ))
         })?;
         Ok(Self { inner })
     }
@@ -28,9 +31,10 @@ impl BertTokenizer {
             return Err(EmbedError::EmptyInput);
         }
 
-        let mut encodings = self.inner.encode_batch(texts.to_vec(), true).map_err(|e| {
-            EmbedError::Config(format!("tokenization failed: {e}"))
-        })?;
+        let mut encodings = self
+            .inner
+            .encode_batch(texts.to_vec(), true)
+            .map_err(|e| EmbedError::Config(format!("tokenization failed: {e}")))?;
 
         for enc in &mut encodings {
             if enc.len() > max_len {
@@ -40,9 +44,8 @@ impl BertTokenizer {
 
         if !encodings.is_empty() {
             let pad = PaddingParams::default();
-            pad_encodings(&mut encodings, &pad).map_err(|e| {
-                EmbedError::Config(format!("padding failed: {e}"))
-            })?;
+            pad_encodings(&mut encodings, &pad)
+                .map_err(|e| EmbedError::Config(format!("padding failed: {e}")))?;
         }
 
         let seq_len = encodings.iter().map(|e| e.len()).max().unwrap_or(0);

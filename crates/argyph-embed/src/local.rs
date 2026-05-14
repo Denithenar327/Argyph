@@ -26,9 +26,7 @@ impl LocalEmbedder {
 
         let tokenizer = BertTokenizer::from_file(&model_files.tokenizer_path)?;
 
-        ort::init()
-            .with_name("argyph-embed")
-            .commit();
+        ort::init().with_name("argyph-embed").commit();
 
         let session = ort::session::Session::builder()
             .map_err(|e| EmbedError::Config(format!("ONNX session builder: {e}")))?
@@ -95,9 +93,7 @@ impl LocalEmbedder {
 
         let last_hidden_value = outputs
             .get("last_hidden_state")
-            .ok_or_else(|| EmbedError::Config(
-                "ONNX output missing 'last_hidden_state'".into(),
-            ))?;
+            .ok_or_else(|| EmbedError::Config("ONNX output missing 'last_hidden_state'".into()))?;
 
         let (_out_shape, last_hidden_data): (_, &[f32]) = last_hidden_value
             .try_extract_tensor::<f32>()
@@ -160,9 +156,9 @@ impl crate::Embedder for LocalEmbedder {
 
 #[cfg(test)]
 mod tests {
-    use crate::Embedder;
     use super::*;
     use crate::config::EmbedConfig;
+    use crate::Embedder;
 
     fn model_dir_exists() -> bool {
         let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
@@ -198,8 +194,7 @@ mod tests {
         }
 
         let home = std::env::var("HOME").unwrap();
-        let cache: std::path::PathBuf =
-            std::path::PathBuf::from(home).join(".cache/argyph/models");
+        let cache: std::path::PathBuf = std::path::PathBuf::from(home).join(".cache/argyph/models");
 
         let config = EmbedConfig {
             cache_dir: Some(cache),
@@ -231,8 +226,7 @@ mod tests {
         }
 
         let home = std::env::var("HOME").unwrap();
-        let cache: std::path::PathBuf =
-            std::path::PathBuf::from(home).join(".cache/argyph/models");
+        let cache: std::path::PathBuf = std::path::PathBuf::from(home).join(".cache/argyph/models");
 
         let config = EmbedConfig {
             cache_dir: Some(cache),

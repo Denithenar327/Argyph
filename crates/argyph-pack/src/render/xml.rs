@@ -8,10 +8,7 @@ use camino::Utf8PathBuf;
 /// sections.
 ///
 /// Output is guaranteed to be well-formed XML.
-pub fn render_xml(
-    files: &[(Utf8PathBuf, &str, bool, usize)],
-    repo_name: &str,
-) -> String {
+pub fn render_xml(files: &[(Utf8PathBuf, &str, bool, usize)], repo_name: &str) -> String {
     let mut out = String::new();
     out.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
     out.push_str(&format!(

@@ -37,6 +37,7 @@ pub struct TierInfo {
 pub struct Tiers {
     pub files: TierInfo,
     pub symbols: TierInfo,
+    pub embeddings: TierInfo,
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
@@ -45,12 +46,15 @@ pub struct WatcherInfo {
 }
 
 impl Response {
+    #[allow(clippy::too_many_arguments)]
     pub fn ok(
         root: &str,
         file_count: u64,
         files_ready: bool,
         symbols_ready: bool,
         symbol_count: u64,
+        embeddings_ready: bool,
+        embedded_count: u64,
     ) -> Self {
         Self {
             root: Some(root.to_string()),
@@ -64,6 +68,10 @@ impl Response {
                 symbols: TierInfo {
                     ready: symbols_ready,
                     count: symbol_count,
+                },
+                embeddings: TierInfo {
+                    ready: embeddings_ready,
+                    count: embedded_count,
                 },
             }),
             watcher: Some(WatcherInfo { active: false }),
@@ -89,11 +97,18 @@ pub async fn handle(supervisor: &Arc<Supervisor>, root: &Utf8PathBuf) -> Respons
     let tier_num = tier_state.tier_number();
     let files_ready = tier_num >= 1;
     let symbols_ready = tier_num >= 2;
+    let embeddings_ready = tier_num >= 3;
+
+    let symbol_count = tier_state.symbol_count();
+
+    let embedded_count = match &tier_state {
+        argyph_core::TierState::Tier2 { embedded, .. } => *embedded as u64,
+        argyph_core::TierState::Ready => symbol_count,
+        _ => 0,
+    };
 
     let index = supervisor.index();
     let file_count = index.status().await.map(|s| s.file_count).unwrap_or(0);
-
-    let symbol_count = tier_state.symbol_count();
 
     Response::ok(
         root.as_str(),
@@ -101,5 +116,7 @@ pub async fn handle(supervisor: &Arc<Supervisor>, root: &Utf8PathBuf) -> Respons
         files_ready,
         symbols_ready,
         symbol_count,
+        embeddings_ready,
+        embedded_count,
     )
 }

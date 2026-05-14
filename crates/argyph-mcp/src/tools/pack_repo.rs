@@ -66,8 +66,7 @@ impl Response {
             PackFormat::Xml => "xml",
             PackFormat::Markdown => "markdown",
         };
-        let trunc_set: std::collections::HashSet<_> =
-            result.files_truncated.iter().collect();
+        let trunc_set: std::collections::HashSet<_> = result.files_truncated.iter().collect();
         Self {
             content: Some(result.content),
             format: Some(fmt.to_string()),
@@ -92,9 +91,7 @@ impl Response {
                     })
                     .collect(),
             ),
-            files_omitted: Some(
-                result.files_omitted.iter().map(|p| p.to_string()).collect(),
-            ),
+            files_omitted: Some(result.files_omitted.iter().map(|p| p.to_string()).collect()),
             error: None,
         }
     }
@@ -123,9 +120,7 @@ pub async fn handle(
 
     let scope = match request.scope.unwrap_or(Scope::All) {
         Scope::All => PackScope::All,
-        Scope::Paths(paths) => {
-            PackScope::Paths(paths.into_iter().map(Utf8PathBuf::from).collect())
-        }
+        Scope::Paths(paths) => PackScope::Paths(paths.into_iter().map(Utf8PathBuf::from).collect()),
         Scope::Symbol(name) => PackScope::Symbol(name),
     };
 

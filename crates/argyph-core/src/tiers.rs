@@ -18,16 +18,9 @@ use crate::error::Result;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TierState {
     Offline,
-    Tier0 {
-        files_indexed: usize,
-    },
-    Tier1 {
-        symbols_indexed: usize,
-    },
-    Tier2 {
-        embedded: usize,
-        total: usize,
-    },
+    Tier0 { files_indexed: usize },
+    Tier1 { symbols_indexed: usize },
+    Tier2 { embedded: usize, total: usize },
     Ready,
 }
 
@@ -64,7 +57,9 @@ impl TierState {
     #[must_use]
     pub fn symbol_count(&self) -> u64 {
         match self {
-            Self::Tier1 { symbols_indexed, .. } => *symbols_indexed as u64,
+            Self::Tier1 {
+                symbols_indexed, ..
+            } => *symbols_indexed as u64,
             _ => 0,
         }
     }
@@ -194,7 +189,10 @@ pub async fn run_tier2(
 
             if texts.is_empty() {
                 done += chunk_ids.len();
-                let _ = progress_tx.send(Tier2Progress { embedded: done, total });
+                let _ = progress_tx.send(Tier2Progress {
+                    embedded: done,
+                    total,
+                });
                 tokio::task::yield_now().await;
                 continue;
             }
@@ -218,7 +216,10 @@ pub async fn run_tier2(
             store.upsert_vectors(&entries).await?;
             done += chunk_ids.len();
 
-            let _ = progress_tx.send(Tier2Progress { embedded: done, total });
+            let _ = progress_tx.send(Tier2Progress {
+                embedded: done,
+                total,
+            });
 
             tokio::task::yield_now().await;
         }
@@ -390,10 +391,7 @@ mod tests {
     #[test]
     fn tier_state_display() {
         assert_eq!(TierState::Offline.to_string(), "offline");
-        assert_eq!(
-            TierState::Tier0 { files_indexed: 0 }.to_string(),
-            "tier0"
-        );
+        assert_eq!(TierState::Tier0 { files_indexed: 0 }.to_string(), "tier0");
         assert_eq!(
             TierState::Tier1 {
                 symbols_indexed: 100
@@ -416,10 +414,7 @@ mod tests {
     fn tier_state_is_ready() {
         assert!(!TierState::Offline.is_ready());
         assert!(TierState::Tier0 { files_indexed: 0 }.is_ready());
-        assert!(TierState::Tier1 {
-            symbols_indexed: 1
-        }
-        .is_ready());
+        assert!(TierState::Tier1 { symbols_indexed: 1 }.is_ready());
         assert!(TierState::Tier2 {
             embedded: 1,
             total: 2
@@ -432,13 +427,7 @@ mod tests {
     fn tier_number_progression() {
         assert_eq!(TierState::Offline.tier_number(), 0);
         assert_eq!(TierState::Tier0 { files_indexed: 0 }.tier_number(), 1);
-        assert_eq!(
-            TierState::Tier1 {
-                symbols_indexed: 0
-            }
-            .tier_number(),
-            2
-        );
+        assert_eq!(TierState::Tier1 { symbols_indexed: 0 }.tier_number(), 2);
         assert_eq!(
             TierState::Tier2 {
                 embedded: 0,

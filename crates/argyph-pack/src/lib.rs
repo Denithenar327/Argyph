@@ -169,9 +169,7 @@ impl Packer for DefaultPacker {
 
         let content = match req.format {
             PackFormat::Xml => render::xml::render_xml(&file_refs, "repository"),
-            PackFormat::Markdown => {
-                render::markdown::render_markdown(&file_refs, "repository")
-            }
+            PackFormat::Markdown => render::markdown::render_markdown(&file_refs, "repository"),
         };
 
         let token_count = self.counter.count(&content);
@@ -239,8 +237,7 @@ impl DefaultPacker {
                 remaining_budget = remaining_budget.saturating_sub(full_count);
                 entries.push((file.clone(), content, false, full_count));
             } else {
-                let (truncated, trunc_count) =
-                    truncate_file(&content, per_file, &self.counter);
+                let (truncated, trunc_count) = truncate_file(&content, per_file, &self.counter);
                 remaining_budget = remaining_budget.saturating_sub(trunc_count);
                 // Only include if we got some content
                 if trunc_count > 0 {
@@ -313,10 +310,7 @@ mod tests {
 
     impl TestContext {
         fn with_content_files(files: HashMap<Utf8PathBuf, String>) -> Self {
-            let file_map = files
-                .into_iter()
-                .map(|(k, v)| (k, (v, 0)))
-                .collect();
+            let file_map = files.into_iter().map(|(k, v)| (k, (v, 0))).collect();
             Self {
                 files: file_map,
                 mtimes: HashMap::new(),
@@ -403,10 +397,7 @@ mod tests {
     fn pack_single_file_in_full() {
         let packer = DefaultPacker::new().unwrap();
         let mut files = HashMap::new();
-        files.insert(
-            path("src/main.rs"),
-            "fn main() {}".to_string(),
-        );
+        files.insert(path("src/main.rs"), "fn main() {}".to_string());
         let ctx = TestContext::with_content_files(files);
         let req = PackRequest {
             scope: PackScope::All,
@@ -445,9 +436,21 @@ mod tests {
         let result = packer.pack(&req, &ctx).unwrap();
         // lib.rs (entry point) should appear before README.md (top-level doc)
         // which should appear before utils.rs
-        let lib_pos = result.files_included.iter().position(|p| p.as_str() == "src/lib.rs").unwrap();
-        let readme_pos = result.files_included.iter().position(|p| p.as_str() == "README.md").unwrap();
-        let utils_pos = result.files_included.iter().position(|p| p.as_str() == "src/utils.rs").unwrap();
+        let lib_pos = result
+            .files_included
+            .iter()
+            .position(|p| p.as_str() == "src/lib.rs")
+            .unwrap();
+        let readme_pos = result
+            .files_included
+            .iter()
+            .position(|p| p.as_str() == "README.md")
+            .unwrap();
+        let utils_pos = result
+            .files_included
+            .iter()
+            .position(|p| p.as_str() == "src/utils.rs")
+            .unwrap();
         assert!(lib_pos < readme_pos);
         assert!(readme_pos < utils_pos);
     }
@@ -529,7 +532,10 @@ mod tests {
     fn markdown_format_output() {
         let packer = DefaultPacker::new().unwrap();
         let mut files = HashMap::new();
-        files.insert(path("src/lib.rs"), "pub fn add(a: i32, b: i32) -> i32 { a + b }".to_string());
+        files.insert(
+            path("src/lib.rs"),
+            "pub fn add(a: i32, b: i32) -> i32 { a + b }".to_string(),
+        );
         let ctx = TestContext::with_content_files(files);
         let req = PackRequest {
             scope: PackScope::All,

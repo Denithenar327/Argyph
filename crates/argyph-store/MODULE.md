@@ -2,25 +2,22 @@
 
 ## Purpose
 
-The persistence layer. Owns SQLite (for files, symbols, edges, FTS5 text index) and LanceDB (for chunk vectors). Provides the `Store` trait that the rest of the project consumes.
+The persistence layer. Owns SQLite (for files, symbols, edges, FTS5 text index, and chunk vectors). Provides the `Store` trait that the rest of the project consumes.
 
 ## Owns
 
-- SQLite schema and migrations for the `files`, `symbols`, `chunks`, `edges` tables and the FTS5 virtual table over chunk text.
-- LanceDB tables for chunk vectors.
+- SQLite schema and migrations for the `files`, `symbols`, `chunks`, `edges`, `vectors` tables and the FTS5 virtual table over chunk text.
 - The `Store` trait and its default implementation.
-- Hybrid search query: BM25 from SQLite FTS5 fused with vector search from LanceDB via reciprocal rank fusion (RRF).
+- Hybrid search query: BM25 from SQLite FTS5 fused with vector similarity via reciprocal rank fusion (RRF).
 - Schema migration runner — runs at boot, before any read/write.
 - Integrity check on startup; on detected corruption, drop and rebuild the index with a clear user warning.
 - WAL mode configuration on SQLite.
 - The on-disk layout under `.argyph/`:
   ```
   .argyph/
-    meta.sqlite        # SQLite (files, symbols, chunks-text, edges, FTS5)
+    meta.sqlite        # SQLite (files, symbols, chunks-text, edges, FTS5, vectors)
     meta.sqlite-wal
-    vectors.lance/     # LanceDB tables (chunk embeddings)
     schema_version
-    embedding_meta     # which model/dimension produced current vectors
   ```
 
 ## Must never own
@@ -72,7 +69,7 @@ impl DefaultStore {
 ## Internal structure
 
 - `src/lib.rs` — `Store` trait, `DefaultStore` factory.
-- `src/lance.rs` — LanceDB integration.
+- `src/sqlite/mod.rs` — SQLite connection pool and `Store` trait implementation.
 - `src/meta.rs` — SQLite connection pool, query helpers.
 - `src/schema.rs` — **architecture-protected.** Schema definitions, never edited; new versions add migrations.
 - `src/migrations/` — **architecture-protected.** Numbered SQL files: `001_initial.sql`, `002_add_symbols.sql`, etc.
@@ -82,7 +79,7 @@ impl DefaultStore {
 ## Failure modes
 
 - **AI agents editing existing migrations.** Hard rule: never. Add a new migration file; never edit an old one. AI Agent Rule #2.
-- **AI agents bypassing the `Store` trait.** Other crates must never `use rusqlite` or `use lancedb` directly. The trait is the seam.
+- **AI agents bypassing the `Store` trait.** Other crates must never `use rusqlite` directly. The trait is the seam.
 - **AI agents writing schema changes without bumping `schema_version`.** Tested in CI: an integration test that fails if the migration set's resulting schema diverges from `schema.rs`.
 - **Power-loss scenarios.** WAL mode + transactional writes mostly handle this. The integrity check on startup is the backstop.
 - **AI agents disabling WAL mode for "simplicity."** Don't.
@@ -90,7 +87,7 @@ impl DefaultStore {
 ## Honest limitations
 
 - SQLite is excellent up to ~10M rows for our query patterns. Past that, query plan tuning matters; we'll address it if/when we hit it.
-- LanceDB is younger than alternatives. The `Store` trait abstraction is deliberate so we could swap if needed.
+- Vector search uses brute-force cosine similarity in Rust over SQLite BLOBs, keeping the build portable with zero native dependencies beyond SQLite.
 - We do not currently support concurrent readers from a different process. The `argyph` binary is the single owner.
 - The embedded model fingerprint is checked on startup; if the configured model doesn't match the index's embeddings, the user is told to reindex Tier 2.
 

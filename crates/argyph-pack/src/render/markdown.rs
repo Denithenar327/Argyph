@@ -5,10 +5,7 @@ use camino::Utf8PathBuf;
 /// Each file produces a level-2 heading with path and metadata, followed
 /// by a fenced code block using the detected language from the file
 /// extension.
-pub fn render_markdown(
-    files: &[(Utf8PathBuf, &str, bool, usize)],
-    repo_name: &str,
-) -> String {
+pub fn render_markdown(files: &[(Utf8PathBuf, &str, bool, usize)], repo_name: &str) -> String {
     let mut out = String::new();
     out.push_str(&format!("# Repository: {repo_name}\n\n"));
 
@@ -107,10 +104,7 @@ mod tests {
 
     #[test]
     fn multiple_files_in_order() {
-        let files = [
-            (p("a.rs"), "// a", false, 1),
-            (p("b.py"), "# b", false, 1),
-        ];
+        let files = [(p("a.rs"), "// a", false, 1), (p("b.py"), "# b", false, 1)];
         let result = render_markdown(&files, "repo");
         let a_pos = result.find("a.rs").unwrap();
         let b_pos = result.find("b.py").unwrap();
@@ -129,10 +123,7 @@ mod tests {
 
     #[test]
     fn unknown_extension_returns_empty() {
-        assert_eq!(
-            lang_from_ext(camino::Utf8Path::new("foo.unknown_ext")),
-            ""
-        );
+        assert_eq!(lang_from_ext(camino::Utf8Path::new("foo.unknown_ext")), "");
         assert_eq!(lang_from_ext(camino::Utf8Path::new("no_extension")), "");
     }
 }

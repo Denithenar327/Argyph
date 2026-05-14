@@ -16,12 +16,19 @@ pub struct Request {
     pub query: String,
     #[serde(default = "default_k")]
     pub k: usize,
+    #[serde(default = "default_alpha")]
+    #[allow(dead_code)]
+    pub alpha: f64,
     #[serde(default)]
     pub filter: Option<Filter>,
 }
 
 fn default_k() -> usize {
     10
+}
+
+fn default_alpha() -> f64 {
+    0.5
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]

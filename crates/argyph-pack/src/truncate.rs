@@ -7,11 +7,7 @@ use crate::tokenize::TokenCounter;
 /// Returns `(truncated_content, actual_token_count)`. When even the marker
 /// exceeds `max_tokens`, returns an empty string with a count of 0 (callers
 /// should treat this as an omitted file).
-pub fn truncate_file(
-    content: &str,
-    max_tokens: usize,
-    counter: &TokenCounter,
-) -> (String, usize) {
+pub fn truncate_file(content: &str, max_tokens: usize, counter: &TokenCounter) -> (String, usize) {
     let full_count = counter.count(content);
     if full_count <= max_tokens {
         return (content.to_string(), full_count);

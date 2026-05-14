@@ -49,19 +49,22 @@ pub struct Response {
 }
 
 impl Response {
-    fn ok(result: argyph_core::SearchResult) -> Self {
+    fn ok(result: argyph_core::SearchResult, root: &Utf8PathBuf) -> Self {
         Self {
             hits: Some(
                 result
                     .hits
                     .into_iter()
-                    .map(|h| SearchHit {
-                        file: h.file.to_string(),
-                        line: h.line,
-                        column: h.column,
-                        match_text: h.match_text,
-                        context_before: vec![],
-                        context_after: vec![],
+                    .map(|h| {
+                        let (ctx_before, ctx_after) = read_context(root, &h.file, h.line);
+                        SearchHit {
+                            file: h.file.to_string(),
+                            line: h.line,
+                            column: h.column,
+                            match_text: h.match_text,
+                            context_before: ctx_before,
+                            context_after: ctx_after,
+                        }
                     })
                     .collect(),
             ),
@@ -106,7 +109,24 @@ pub async fn handle(
         )
         .await
     {
-        Ok(result) => Response::ok(result),
+        Ok(result) => Response::ok(result, root),
         Err(e) => Response::err(error::internal(e.to_string())),
     }
+}
+
+fn read_context(root: &Utf8PathBuf, file: &camino::Utf8Path, line: u64) -> (Vec<String>, Vec<String>) {
+    let full = root.join(file.as_str());
+    let Ok(content) = std::fs::read_to_string(full.as_str()) else {
+        return (vec![], vec![]);
+    };
+    let all_lines: Vec<&str> = content.lines().collect();
+    let idx = (line as usize).saturating_sub(1);
+    if idx >= all_lines.len() {
+        return (vec![], vec![]);
+    }
+    let ctx_start = idx.saturating_sub(1);
+    let before: Vec<String> = all_lines[ctx_start..idx].iter().map(|s| s.to_string()).collect();
+    let after_end = (idx + 2).min(all_lines.len());
+    let after: Vec<String> = all_lines[idx + 1..after_end].iter().map(|s| s.to_string()).collect();
+    (before, after)
 }

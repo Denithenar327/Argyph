@@ -45,8 +45,6 @@ The MCP tool catalog (v1.0):
 | `get_imports`         | `src/tools/get_imports.rs`                |
 | `get_symbol_outline`  | `src/tools/get_symbol_outline.rs`         |
 | `pack_repo`           | `src/tools/pack_repo.rs`                  |
-| `read_file_range`     | `src/tools/read_file_range.rs`            |
-| `reindex`             | `src/tools/reindex.rs`                    |
 
 ## Internal structure
 

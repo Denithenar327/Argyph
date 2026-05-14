@@ -83,7 +83,7 @@ fn convert_outline(file: &str, outline: &argyph_graph::graph::SymbolOutline) -> 
         symbol_id: format!("{file}::{name}::0", name = outline.name),
         name: outline.name.clone(),
         kind: outline.kind.clone(),
-        range: (0, 0),
+        range: outline.range,
         children: outline
             .children
             .iter()

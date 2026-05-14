@@ -19,10 +19,7 @@ pub struct ModelFiles {
 }
 
 impl ModelFiles {
-    pub async fn ensure_available(
-        model_id: &str,
-        cache_dir: Option<&Path>,
-    ) -> Result<ModelFiles> {
+    pub async fn ensure_available(model_id: &str, cache_dir: Option<&Path>) -> Result<ModelFiles> {
         if model_id != BGE_SMALL_MODEL_ID {
             return Err(EmbedError::Config(format!(
                 "unknown local model: {model_id}"
@@ -87,8 +84,7 @@ impl ModelFiles {
         let tok = model_dir.join(TOKENIZER_FILENAME);
 
         let onnx_ok = Self::file_hash_matches(&onnx, model_hashes::BGE_SMALL_ONNX_SHA256).await;
-        let tok_ok =
-            Self::file_hash_matches(&tok, model_hashes::BGE_SMALL_TOKENIZER_SHA256).await;
+        let tok_ok = Self::file_hash_matches(&tok, model_hashes::BGE_SMALL_TOKENIZER_SHA256).await;
 
         !(onnx_ok && tok_ok)
     }
@@ -109,9 +105,9 @@ impl ModelFiles {
         let tmp = dest.with_extension("tmp");
 
         tracing::info!(%url, "downloading");
-        let response = reqwest::get(url).await.map_err(|e| {
-            EmbedError::Config(format!("failed to download {url}: {e}"))
-        })?;
+        let response = reqwest::get(url)
+            .await
+            .map_err(|e| EmbedError::Config(format!("failed to download {url}: {e}")))?;
 
         if !response.status().is_success() {
             return Err(EmbedError::Config(format!(
@@ -120,9 +116,10 @@ impl ModelFiles {
             )));
         }
 
-        let bytes = response.bytes().await.map_err(|e| {
-            EmbedError::Config(format!("failed to read response for {url}: {e}"))
-        })?;
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|e| EmbedError::Config(format!("failed to read response for {url}: {e}")))?;
 
         {
             use sha2::Digest;
@@ -160,23 +157,25 @@ impl ModelFiles {
 }
 
 fn dirs_next() -> Option<PathBuf> {
-    std::env::var("HOME").ok().or({
-        #[cfg(target_os = "windows")]
-        {
-            let drive = std::env::var("HOMEDRIVE").unwrap_or_default();
-            let path = std::env::var("HOMEPATH").unwrap_or_default();
-            if drive.is_empty() || path.is_empty() {
-                None
-            } else {
-                Some(format!("{drive}{path}"))
+    std::env::var("HOME")
+        .ok()
+        .or({
+            #[cfg(target_os = "windows")]
+            {
+                let drive = std::env::var("HOMEDRIVE").unwrap_or_default();
+                let path = std::env::var("HOMEPATH").unwrap_or_default();
+                if drive.is_empty() || path.is_empty() {
+                    None
+                } else {
+                    Some(format!("{drive}{path}"))
+                }
             }
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            None
-        }
-    })
-    .map(PathBuf::from)
+            #[cfg(not(target_os = "windows"))]
+            {
+                None
+            }
+        })
+        .map(PathBuf::from)
 }
 
 #[cfg(test)]

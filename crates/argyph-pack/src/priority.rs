@@ -4,7 +4,12 @@ use std::collections::HashSet;
 use std::time::{Duration, SystemTime};
 
 const ENTRY_POINTS: &[&str] = &[
-    "main.rs", "lib.rs", "index.ts", "index.tsx", "__main__.py", "main.py",
+    "main.rs",
+    "lib.rs",
+    "index.ts",
+    "index.tsx",
+    "__main__.py",
+    "main.py",
 ];
 
 const TOP_LEVEL_DOCS: &[&str] = &[
@@ -193,17 +198,19 @@ mod tests {
         );
         let ordered = prioritize(&files, &ctx);
         // Entry points first, then lexicographic
-        assert!(ordered[0].file_name().unwrap() == "lib.rs" || ordered[0].file_name().unwrap() == "main.rs");
-        assert!(ordered[1].file_name().unwrap() == "lib.rs" || ordered[1].file_name().unwrap() == "main.rs");
+        assert!(
+            ordered[0].file_name().unwrap() == "lib.rs"
+                || ordered[0].file_name().unwrap() == "main.rs"
+        );
+        assert!(
+            ordered[1].file_name().unwrap() == "lib.rs"
+                || ordered[1].file_name().unwrap() == "main.rs"
+        );
     }
 
     #[test]
     fn top_level_readme_before_other_files() {
-        let files = vec![
-            path("src/foo.rs"),
-            path("README.md"),
-            path("src/bar.rs"),
-        ];
+        let files = vec![path("src/foo.rs"), path("README.md"), path("src/bar.rs")];
         let ctx = TestContext::new(
             files
                 .iter()
@@ -317,10 +324,7 @@ mod tests {
 
     #[test]
     fn entry_point_not_duplicated() {
-        let files = vec![
-            path("src/main.rs"),
-            path("src/utils.rs"),
-        ];
+        let files = vec![path("src/main.rs"), path("src/utils.rs")];
         let mut in_edges = HashMap::new();
         in_edges.insert(path("src/main.rs"), 100);
         let ctx = TestContext::new(
@@ -335,6 +339,12 @@ mod tests {
         assert_eq!(ordered.len(), 2);
         assert_eq!(ordered[0].file_name().unwrap(), "main.rs");
         // main.rs appears exactly once
-        assert_eq!(ordered.iter().filter(|p| p.file_name().unwrap() == "main.rs").count(), 1);
+        assert_eq!(
+            ordered
+                .iter()
+                .filter(|p| p.file_name().unwrap() == "main.rs")
+                .count(),
+            1
+        );
     }
 }

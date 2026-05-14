@@ -3,7 +3,7 @@ use std::sync::Mutex;
 use std::time::SystemTime;
 
 use camino::{Utf8Path, Utf8PathBuf};
-use rusqlite::{params, Connection, Row};
+use rusqlite::{params, Connection, OptionalExtension, Row};
 
 use argyph_fs::{Blake3Hash, FileEntry, Language};
 use argyph_graph::edge::{Confidence, Edge, EdgeKind};
@@ -17,6 +17,7 @@ use crate::search::{
     HitSource, HybridSearchResult, SearchFilter, SearchHit, VectorEntry,
 };
 use crate::Store;
+use crate::StructuralNodeRecord;
 
 pub struct SqliteStore {
     pub(crate) conn: Mutex<Connection>,
@@ -349,7 +350,7 @@ impl Store for SqliteStore {
     async fn get_symbol_outline(&self, file: &Utf8Path) -> Result<Vec<SymbolOutline>> {
         let conn = self.conn.lock().expect("mutex poisoned");
         let mut stmt = conn.prepare(
-            "SELECT id, name, kind, signature, parent_id
+            "SELECT id, name, kind, signature, parent_id, range_start, range_end
              FROM symbols WHERE file = ?1 ORDER BY name",
         )?;
         let rows = stmt.query_map(params![file.as_str()], |row| {
@@ -359,26 +360,29 @@ impl Store for SqliteStore {
                 row.get::<_, String>(2)?,
                 row.get::<_, Option<String>>(3)?,
                 row.get::<_, Option<String>>(4)?,
+                row.get::<_, u64>(5)?,
+                row.get::<_, u64>(6)?,
             ))
         })?;
 
-        let all: Vec<(String, String, String, Option<String>, Option<String>)> =
+        let all: Vec<(String, String, String, Option<String>, Option<String>, u64, u64)> =
             rows.filter_map(|r| r.ok()).collect();
 
         let file_ids: HashSet<&str> = all.iter().map(|(id, ..)| id.as_str()).collect();
 
         let mut map: HashMap<String, SymbolOutline> = HashMap::new();
-        for (id, name, kind, sig, _parent_id) in &all {
+        for (id, name, kind, sig, _parent_id, start, end) in &all {
             map.entry(id.clone()).or_insert(SymbolOutline {
                 name: name.clone(),
                 kind: kind.clone(),
                 signature: sig.clone(),
+                range: (*start, *end),
                 children: Vec::new(),
             });
         }
 
         let mut root_ids: Vec<String> = Vec::new();
-        for (id, _name, _kind, _sig, parent_id) in &all {
+        for (id, _name, _kind, _sig, parent_id, _start, _end) in &all {
             let has_in_file_parent = parent_id
                 .as_ref()
                 .is_some_and(|pid| file_ids.contains(pid.as_str()));
@@ -387,7 +391,7 @@ impl Store for SqliteStore {
             }
         }
 
-        for (id, _name, _kind, _sig, parent_id) in &all {
+        for (id, _name, _kind, _sig, parent_id, _start, _end) in &all {
             if let Some(pid) = parent_id {
                 if file_ids.contains(pid.as_str()) {
                     if let Some(child) = map.remove(id) {
@@ -652,6 +656,123 @@ impl Store for SqliteStore {
         }
         Ok(out)
     }
+
+    // ---- Structural nodes ----
+
+    #[allow(clippy::expect_used)]
+    async fn upsert_structural_nodes(&self, file_id: i64, nodes: &[StructuralNodeRecord]) -> Result<()> {
+        if nodes.is_empty() { return Ok(()); }
+        let mut conn = self.conn.lock().expect("mutex poisoned");
+        let tx = conn.transaction()?;
+        {
+            tx.execute("DELETE FROM structural_nodes WHERE file_id = ?1", params![file_id])?;
+            let mut stmt = tx.prepare_cached(
+                "INSERT INTO structural_nodes (id, file_id, kind, label, path_joined, path_json, byte_start, byte_end, line_start, line_end, parent_id, depth)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            )?;
+            for n in nodes {
+                let path_json = serde_json::to_string(&n.path).unwrap_or_default();
+                stmt.execute(params![
+                    n.id, n.file_id, n.kind.as_str(), n.label.as_str(),
+                    n.path_joined.as_str(), path_json.as_str(),
+                    n.byte_range.0 as i64, n.byte_range.1 as i64,
+                    n.line_range.0 as i64, n.line_range.1 as i64,
+                    n.parent_id, n.depth as i64,
+                ])?;
+            }
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    #[allow(clippy::expect_used)]
+    async fn get_structural_node_by_path(&self, file_id: Option<i64>, path_joined: &str) -> Result<Option<StructuralNodeRecord>> {
+        let conn = self.conn.lock().expect("mutex poisoned");
+        let result = if let Some(fid) = file_id {
+            let mut stmt = conn.prepare_cached(
+                "SELECT id, file_id, kind, label, path_joined, path_json, byte_start, byte_end, line_start, line_end, parent_id, depth
+                 FROM structural_nodes WHERE file_id = ?1 AND path_joined = ?2",
+            )?;
+            stmt.query_row(params![fid, path_joined], row_to_structural_node).optional()?
+        } else {
+            let mut stmt = conn.prepare_cached(
+                "SELECT id, file_id, kind, label, path_joined, path_json, byte_start, byte_end, line_start, line_end, parent_id, depth
+                 FROM structural_nodes WHERE path_joined = ?1 ORDER BY file_id, depth LIMIT 1",
+            )?;
+            stmt.query_row(params![path_joined], row_to_structural_node).optional()?
+        };
+        Ok(result)
+    }
+
+    #[allow(clippy::expect_used)]
+    async fn fts_search_structural(&self, query: &str, file_ids: Option<&[i64]>, limit: usize) -> Result<Vec<StructuralNodeRecord>> {
+        let conn = self.conn.lock().expect("mutex poisoned");
+        let mut stmt = conn.prepare_cached(
+            "SELECT sn.id, sn.file_id, sn.kind, sn.label, sn.path_joined, sn.path_json, sn.byte_start, sn.byte_end, sn.line_start, sn.line_end, sn.parent_id, sn.depth
+             FROM structural_fts fts
+             JOIN structural_nodes sn ON sn.id = fts.rowid
+             WHERE structural_fts MATCH ?1
+             ORDER BY rank
+             LIMIT ?2",
+        )?;
+        let rows = stmt.query_map(params![query, limit as i64], row_to_structural_node)?;
+        let mut out: Vec<StructuralNodeRecord> = Vec::new();
+        for row in rows {
+            if let Ok(rec) = row {
+                match file_ids {
+                    Some(ids) if !ids.contains(&rec.file_id) => continue,
+                    _ => out.push(rec),
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    #[allow(clippy::expect_used)]
+    async fn enclosing_structural_node(&self, file_id: i64, byte_offset: u32) -> Result<Option<StructuralNodeRecord>> {
+        let conn = self.conn.lock().expect("mutex poisoned");
+        let mut stmt = conn.prepare_cached(
+            "SELECT id, file_id, kind, label, path_joined, path_json, byte_start, byte_end, line_start, line_end, parent_id, depth
+             FROM structural_nodes
+             WHERE file_id = ?1 AND byte_start <= ?2 AND byte_end >= ?2
+             ORDER BY (byte_end - byte_start) ASC
+             LIMIT 1",
+        )?;
+        let result = stmt.query_row(params![file_id, byte_offset as i64], row_to_structural_node).optional()?;
+        Ok(result)
+    }
+
+    #[allow(clippy::expect_used)]
+    async fn structural_node_by_id(&self, id: i64) -> Result<Option<StructuralNodeRecord>> {
+        let conn = self.conn.lock().expect("mutex poisoned");
+        let mut stmt = conn.prepare_cached(
+            "SELECT id, file_id, kind, label, path_joined, path_json, byte_start, byte_end, line_start, line_end, parent_id, depth
+             FROM structural_nodes WHERE id = ?1",
+        )?;
+        let result = stmt.query_row(params![id], row_to_structural_node).optional()?;
+        Ok(result)
+    }
+}
+
+// ---------------------------------------------------------------
+// Structural node helper
+// ---------------------------------------------------------------
+
+fn row_to_structural_node(row: &Row) -> rusqlite::Result<StructuralNodeRecord> {
+    let path_json: String = row.get(5)?;
+    let path: Vec<String> = serde_json::from_str(&path_json).unwrap_or_default();
+    Ok(StructuralNodeRecord {
+        id: row.get(0)?,
+        file_id: row.get(1)?,
+        kind: row.get(2)?,
+        label: row.get(3)?,
+        path_joined: row.get(4)?,
+        path,
+        byte_range: (row.get::<_, i64>(6)? as u32, row.get::<_, i64>(7)? as u32),
+        line_range: (row.get::<_, i64>(8)? as u32, row.get::<_, i64>(9)? as u32),
+        parent_id: row.get(10)?,
+        depth: row.get::<_, i64>(11)? as u16,
+    })
 }
 
 // ---------------------------------------------------------------
