@@ -11,6 +11,8 @@ workspace = true
 argyph-fs = { path = "../crates/argyph-fs" }
 argyph-parse = { path = "../crates/argyph-parse" }
 argyph-pack = { path = "../crates/argyph-pack" }
+argyph-locate = { path = "../crates/argyph-locate" }
+argyph-store = { path = "../crates/argyph-store" }
 camino = "1"
 
 [lib]
@@ -26,4 +28,9 @@ tiktoken-rs = "0.6"
 [[bench]]
 name = "core"
 path = "core.rs"
+harness = false
+
+[[bench]]
+name = "locate"
+path = "locate.rs"
 harness = false

@@ -83,6 +83,7 @@ Argyph builds the index in three tiers, each useful before the next completes:
 |------|-----------------------------------------------|------------------------|---------------------------------------------|
 | 0    | File inventory, hashes, .gitignore-aware tree | <1 s                   | Tree views, ripgrep, packing                |
 | 1    | Symbol graph (defs, refs, calls, imports)     | ~30 s                  | Go-to-def, find-references, call graphs     |
+| 1.5  | Structural index (non-code: md, json, yaml…) | seconds (after Tier 1) | `locate` for structured non-code files       |
 | 2    | Embeddings + hybrid index                     | minutes (background)   | Fuzzy semantic queries                      |
 
 The 80/20 insight: most agent queries are structural (`where is parseConfig defined?`, `what calls validateUser?`) and don't need embeddings. Argyph serves those from Tier 1 in milliseconds, even while Tier 2 is still building.
@@ -107,6 +108,7 @@ After the first index, the on-disk `.argyph/` directory persists and only change
 | `search_semantic`     | Hybrid BM25 + vector over AST-aware chunks               | 2             |
 | `pack_repo`           | Token-budgeted repo flattening (XML or markdown)         | 0+1           |
 | `read_file_range`     | Bounded file read by symbol range                        | 0             |
+| `locate`              | Smallest natural span containing the target              | 1.5           |
 | `reindex`             | Force a full or partial reindex                          | —             |
 
 Full schema reference: [docs/tools-reference.md](docs/tools-reference.md).

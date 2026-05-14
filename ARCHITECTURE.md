@@ -33,6 +33,13 @@ The single most important design decision in Argyph. Each tier is independently 
 - **Tools enabled:** `find_definition`, `find_references`, `get_callers`, `get_callees`, `get_imports`, `get_symbol_outline`, full `pack_repo`.
 - **Honest limitation:** Cross-file resolution is best-effort, not LSP-precise. Intra-file accuracy is high; cross-file uses per-language module-resolution heuristics. This is documented prominently in `crates/argyph-graph/MODULE.md`.
 
+### Tier 1.5 — Structural index (non-code)
+
+- **Wall-clock target:** Seconds. Runs after Tier 1, in parallel with Tier 2.
+- **What it produces:** `StructuralNode` trees for markdown, JSON, YAML, TOML, CSV. Stored in `structural_nodes` SQLite table with an FTS5 index over labels and paths.
+- **Tools enabled:** `locate`.
+- **Size threshold:** Files above `ARGYPH_LOCATE_MAX_FILE_BYTES` (default 10 MB) are not pre-indexed; they get scan-on-demand treatment with LRU caching.
+
 ### Tier 2 — Semantic index
 
 - **Wall-clock target:** Minutes (or longer for huge repos), runs in background without blocking queries.
@@ -58,16 +65,16 @@ Most agent queries are structural — "where is `parseConfig` defined?", "what c
                 │   tool handlers (thin)                  │
                 └────────────────┬────────────────────────┘
                                  │
-        ┌────────────┬───────────┼───────────┬─────────────┐
-        │            │           │           │             │
-   ┌────▼────┐  ┌────▼────┐ ┌────▼────┐ ┌────▼────┐  ┌────▼─────┐
-   │ argyph- │  │ argyph- │ │ argyph- │ │ argyph- │  │ argyph-  │
-   │  fs     │  │ parse   │ │ graph   │ │ embed   │  │ store    │
-   │         │  │         │ │         │ │         │  │          │
-   │ walking │  │ tree-   │ │ symbol  │ │ ONNX +  │  │ LanceDB  │
-   │ ignore  │  │ sitter  │ │ resolve │ │ HTTP    │  │ + SQLite │
-   │ watcher │  │ chunks  │ │  edges  │ │ providers│ │  meta    │
-   └─────────┘  └─────────┘ └─────────┘ └─────────┘  └──────────┘
+        ┌────────────┬───────────┼───────────┬─────────────┬────────────┐
+        │            │           │           │             │            │
+   ┌────▼────┐  ┌────▼────┐ ┌────▼────┐ ┌────▼────┐  ┌────▼─────┐  ┌────▼─────┐
+   │ argyph- │  │ argyph- │ │ argyph- │ │ argyph- │  │ argyph-  │  │ argyph-  │
+   │  fs     │  │ parse   │ │ graph   │ │ embed   │  │ store    │  │ locate   │
+   │         │  │         │ │         │ │         │  │          │  │          │
+   │ walking │  │ tree-   │ │ symbol  │ │ ONNX +  │  │ LanceDB  │  │ structural│
+   │ ignore  │  │ sitter  │ │ resolve │ │ HTTP    │  │ + SQLite │  │  search  │
+   │ watcher │  │ chunks  │ │  edges  │ │ providers│ │  meta    │  │  + path  │
+   └─────────┘  └─────────┘ └─────────┘ └─────────┘  └──────────┘  └──────────┘
                                  ▲
                 ┌────────────────┴────────────────────────┐
                 │       argyph-core (Supervisor)          │
