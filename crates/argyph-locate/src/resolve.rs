@@ -6,6 +6,79 @@ use argyph_store::{SearchFilter, Store, StructuralNodeRecord};
 use crate::path::Locator;
 use crate::types::{ExpandTarget, ExpandTo, Span};
 
+type CacheKey = (i64, [u8; 32]);
+type CacheMap = std::collections::HashMap<CacheKey, Vec<StructuralNodeRecord>>;
+static OOB_CACHE: once_cell::sync::Lazy<std::sync::Mutex<CacheMap>> =
+    once_cell::sync::Lazy::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+
+fn compute_blake3(content: &str) -> [u8; 32] {
+    *blake3::hash(content.as_bytes()).as_bytes()
+}
+
+fn record_from_node(file_id: i64, node: &argyph_parse::structural::StructuralNode) -> StructuralNodeRecord {
+    StructuralNodeRecord {
+        id: 0,
+        file_id,
+        kind: format!("{:?}", node.kind),
+        label: node.label.clone(),
+        path_joined: node.path.join("/"),
+        path: node.path.clone(),
+        byte_range: (node.byte_range.0 as u32, node.byte_range.1 as u32),
+        line_range: node.line_range,
+        parent_id: None,
+        depth: node.depth as u16,
+    }
+}
+
+fn parse_structural(language: argyph_fs::Language, file_id: i64, source: &str) -> Vec<StructuralNodeRecord> {
+    use argyph_fs::Language;
+    let nodes: Vec<argyph_parse::structural::StructuralNode> = match language {
+        Language::Markdown => argyph_parse::structural::markdown::parse(file_id as u64, source),
+        Language::Json => argyph_parse::structural::json::parse(file_id as u64, source),
+        Language::Yaml => argyph_parse::structural::yaml::parse(file_id as u64, source),
+        Language::Toml => argyph_parse::structural::toml_parser::parse(file_id as u64, source),
+        Language::Csv => argyph_parse::structural::csv::parse(file_id as u64, source),
+        _ => return Vec::new(),
+    };
+    nodes.iter().map(|n| record_from_node(file_id, n)).collect()
+}
+
+pub async fn parse_on_demand(
+    _store: &Arc<dyn Store>,
+    root: &Path,
+    file_id: i64,
+    file_path: &str,
+    language: argyph_fs::Language,
+    max_bytes: u32,
+) -> anyhow::Result<Option<Vec<StructuralNodeRecord>>> {
+    let full_path = root.join(file_path);
+    let Ok(content) = std::fs::read_to_string(&full_path) else {
+        return Ok(None);
+    };
+
+    if content.len() > max_bytes as usize {
+        return Ok(None);
+    }
+
+    let hash = compute_blake3(&content);
+    let key = (file_id, hash);
+
+    {
+        #[allow(clippy::expect_used)]
+        let cache = OOB_CACHE.lock().expect("oob cache lock");
+        if let Some(v) = cache.get(&key) {
+            return Ok(Some(v.clone()));
+        }
+    }
+
+    let records = parse_structural(language, file_id, &content);
+
+    #[allow(clippy::expect_used)]
+    OOB_CACHE.lock().expect("oob cache lock").insert(key, records.clone());
+
+    Ok(Some(records))
+}
+
 async fn record_to_span(
     store: &Arc<dyn Store>,
     root: &Path,
@@ -22,7 +95,16 @@ async fn record_to_span(
     let file_size = file_entry.size as u32;
 
     let full_path = root.join(file_entry.path.as_str());
+
     let file_content = std::fs::read_to_string(&full_path).unwrap_or_default();
+
+    let current_hash = compute_blake3(&file_content);
+    let indexed_hash_bytes = file_entry.hash.as_bytes();
+    if current_hash != *indexed_hash_bytes {
+        tracing::warn!(
+            "STALE_INDEX: file {file_path} modified since indexing; results may be imprecise"
+        );
+    }
 
     let byte_start = rec.byte_range.0 as usize;
 
@@ -102,15 +184,40 @@ pub async fn resolve_structural_path(
         _ => single_file,
     };
 
-    let Some(rec) = store
+    if let Some(rec) = store
         .get_structural_node_by_path(file_id, &path_joined)
         .await?
-    else {
-        return Ok(vec![]);
-    };
+    {
+        let span = record_to_span(&store, root, &rec, max_bytes, 1.0).await?;
+        return Ok(vec![span]);
+    }
 
-    let span = record_to_span(&store, root, &rec, max_bytes, 1.0).await?;
-    Ok(vec![span])
+    if let Some(fid) = file_id {
+        if let Some(file_entry) = store.get_file_by_id(fid).await? {
+            if let Some(lang) = file_entry.language {
+                if let Some(records) = parse_on_demand(
+                    &store, root, fid, file_entry.path.as_str(), lang, 10_485_760,
+                )
+                .await?
+                {
+                    for rec in &records {
+                        if rec.path_joined == path_joined || rec.label == path_joined {
+                            let span = record_to_span(&store, root, rec, max_bytes, 0.9).await?;
+                            return Ok(vec![span]);
+                        }
+                    }
+                    for rec in &records {
+                        if rec.path_joined.contains(&path_joined) {
+                            let span = record_to_span(&store, root, rec, max_bytes, 0.8).await?;
+                            return Ok(vec![span]);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(vec![])
 }
 
 pub async fn resolve_structural_search(
