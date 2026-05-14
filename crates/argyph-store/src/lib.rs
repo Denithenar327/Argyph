@@ -14,7 +14,7 @@ use argyph_parse::types::{Chunk, Symbol};
 use camino::Utf8Path;
 
 pub use error::{Result, StoreError};
-pub use search::{HybridSearchResult, HitSource, SearchFilter, SearchHit, VectorEntry};
+pub use search::{HitSource, HybridSearchResult, SearchFilter, SearchHit, VectorEntry};
 pub use sqlite::SqliteStore;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -30,7 +30,6 @@ pub struct StructuralNodeRecord {
     pub parent_id: Option<i64>,
     pub depth: u16,
 }
-
 
 /// Persists file metadata, symbols, chunks, edges, and embedding vectors.
 /// Provides hybrid BM25 + vector search and schema migration management.
@@ -126,13 +125,30 @@ pub trait Store: Send + Sync {
     async fn get_chunk_texts(&self, chunk_ids: &[String]) -> Result<Vec<(String, String)>>;
 
     /// Flush and close the store. The store may not be used after calling this.
-    async fn upsert_structural_nodes(&self, file_id: i64, nodes: &[StructuralNodeRecord]) -> Result<()>;
+    async fn upsert_structural_nodes(
+        &self,
+        file_id: i64,
+        nodes: &[StructuralNodeRecord],
+    ) -> Result<()>;
 
-    async fn get_structural_node_by_path(&self, file_id: Option<i64>, path_joined: &str) -> Result<Option<StructuralNodeRecord>>;
+    async fn get_structural_node_by_path(
+        &self,
+        file_id: Option<i64>,
+        path_joined: &str,
+    ) -> Result<Option<StructuralNodeRecord>>;
 
-    async fn fts_search_structural(&self, query: &str, file_ids: Option<&[i64]>, limit: usize) -> Result<Vec<StructuralNodeRecord>>;
+    async fn fts_search_structural(
+        &self,
+        query: &str,
+        file_ids: Option<&[i64]>,
+        limit: usize,
+    ) -> Result<Vec<StructuralNodeRecord>>;
 
-    async fn enclosing_structural_node(&self, file_id: i64, byte_offset: u32) -> Result<Option<StructuralNodeRecord>>;
+    async fn enclosing_structural_node(
+        &self,
+        file_id: i64,
+        byte_offset: u32,
+    ) -> Result<Option<StructuralNodeRecord>>;
 
     async fn structural_node_by_id(&self, id: i64) -> Result<Option<StructuralNodeRecord>>;
 
@@ -822,7 +838,13 @@ mod tests {
             (vec![0.0_f32, 0.0, 1.0], "mod2.rs"),
         ];
         for (v, file) in &vecs {
-            let c = make_chunk(file, &format!("fn f_{file}() {{}}"), ChunkKind::FunctionBody, 0, 12);
+            let c = make_chunk(
+                file,
+                &format!("fn f_{file}() {{}}"),
+                ChunkKind::FunctionBody,
+                0,
+                12,
+            );
             let cid = c.id.to_string();
             store.upsert_chunks(&[c]).await.unwrap();
             store
@@ -872,13 +894,7 @@ mod tests {
     #[tokio::test]
     async fn search_text_bm25_no_match_returns_empty() {
         let store = open_mem();
-        let c = make_chunk(
-            "src/a.rs",
-            "let x = 1;",
-            ChunkKind::TopLevel,
-            0,
-            10,
-        );
+        let c = make_chunk("src/a.rs", "let x = 1;", ChunkKind::TopLevel, 0, 10);
         store.upsert_chunks(&[c]).await.unwrap();
 
         let hits = store
@@ -915,9 +931,27 @@ mod tests {
         let _dim = 3;
 
         // Create multiple chunks: some with vectors, some without
-        let c1 = make_chunk("src/a.rs", "greeting hello world", ChunkKind::TopLevel, 0, 20);
-        let c2 = make_chunk("src/b.rs", "compute sum of numbers", ChunkKind::FunctionBody, 0, 22);
-        let c3 = make_chunk("src/c.rs", "greeting response handler", ChunkKind::TopLevel, 0, 25);
+        let c1 = make_chunk(
+            "src/a.rs",
+            "greeting hello world",
+            ChunkKind::TopLevel,
+            0,
+            20,
+        );
+        let c2 = make_chunk(
+            "src/b.rs",
+            "compute sum of numbers",
+            ChunkKind::FunctionBody,
+            0,
+            22,
+        );
+        let c3 = make_chunk(
+            "src/c.rs",
+            "greeting response handler",
+            ChunkKind::TopLevel,
+            0,
+            25,
+        );
 
         let cid1 = c1.id.to_string();
         let cid2 = c2.id.to_string();
@@ -936,12 +970,7 @@ mod tests {
 
         // Query: "greeting" text + vector close to [1, 0, 0]
         let result = store
-            .search_hybrid(
-                "greeting",
-                &[1.0, 0.0, 0.0],
-                5,
-                &SearchFilter::default(),
-            )
+            .search_hybrid("greeting", &[1.0, 0.0, 0.0], 5, &SearchFilter::default())
             .await
             .unwrap();
 
@@ -969,12 +998,7 @@ mod tests {
         store.upsert_chunks(&[c]).await.unwrap();
 
         let result = store
-            .search_hybrid(
-                "hello",
-                &[1.0_f32; 4],
-                5,
-                &SearchFilter::default(),
-            )
+            .search_hybrid("hello", &[1.0_f32; 4], 5, &SearchFilter::default())
             .await
             .unwrap();
 
@@ -1058,8 +1082,20 @@ mod tests {
     #[tokio::test]
     async fn filter_by_language_in_bm25_search() {
         let store = open_mem();
-        let c_rust = make_chunk("src/a.rs", "greeting fn a() {}", ChunkKind::FunctionBody, 0, 15);
-        let mut c_py = make_chunk("src/b.py", "greeting def b(): pass", ChunkKind::FunctionBody, 0, 20);
+        let c_rust = make_chunk(
+            "src/a.rs",
+            "greeting fn a() {}",
+            ChunkKind::FunctionBody,
+            0,
+            15,
+        );
+        let mut c_py = make_chunk(
+            "src/b.py",
+            "greeting def b(): pass",
+            ChunkKind::FunctionBody,
+            0,
+            20,
+        );
         c_py.language = Language::Python;
         store.upsert_chunks(&[c_rust, c_py]).await.unwrap();
 
@@ -1096,15 +1132,21 @@ mod tests {
     async fn migration_004_creates_structural_tables() {
         let store = open_mem();
         let conn = store.conn.lock().expect("poisoned");
-        let count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM sqlite_master WHERE name = 'structural_nodes'",
-            [], |r| r.get(0),
-        ).unwrap();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE name = 'structural_nodes'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
         assert_eq!(count, 1);
-        let fts_count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM sqlite_master WHERE name = 'structural_fts'",
-            [], |r| r.get(0),
-        ).unwrap();
+        let fts_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE name = 'structural_fts'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
         assert_eq!(fts_count, 1);
     }
 
@@ -1113,23 +1155,34 @@ mod tests {
         let store = open_mem();
         let entry = make_entry("a.md", b"# Hello");
         store.upsert_files(&[entry]).await.unwrap();
-        let conn = store.conn.lock().expect("poisoned");
-        let file_id: i64 = conn.query_row(
-            "SELECT rowid FROM files WHERE path = 'a.md'",
-            [], |r| r.get(0),
-        ).unwrap();
+        let file_id: i64 = {
+            let conn = store.conn.lock().expect("poisoned");
+            conn.query_row("SELECT rowid FROM files WHERE path = 'a.md'", [], |r| {
+                r.get(0)
+            })
+            .unwrap()
+        };
 
         let rec = StructuralNodeRecord {
-            id: 100, file_id,
+            id: 100,
+            file_id,
             kind: "MdSection".into(),
             label: "Pricing".into(),
             path_joined: "Pricing".into(),
             path: vec!["Pricing".into()],
-            byte_range: (0, 50), line_range: (1, 5),
-            parent_id: None, depth: 0,
+            byte_range: (0, 50),
+            line_range: (1, 5),
+            parent_id: None,
+            depth: 0,
         };
-        store.upsert_structural_nodes(file_id, &[rec.clone()]).await.unwrap();
-        let got = store.get_structural_node_by_path(Some(file_id), "Pricing").await.unwrap();
+        store
+            .upsert_structural_nodes(file_id, &[rec.clone()])
+            .await
+            .unwrap();
+        let got = store
+            .get_structural_node_by_path(Some(file_id), "Pricing")
+            .await
+            .unwrap();
         assert_eq!(got, Some(rec));
     }
 
@@ -1138,22 +1191,30 @@ mod tests {
         let store = open_mem();
         let entry = make_entry("b.md", b"data");
         store.upsert_files(&[entry]).await.unwrap();
-        let conn = store.conn.lock().expect("poisoned");
-        let file_id: i64 = conn.query_row(
-            "SELECT rowid FROM files WHERE path = 'b.md'",
-            [], |r| r.get(0),
-        ).unwrap();
+        let file_id: i64 = {
+            let conn = store.conn.lock().expect("poisoned");
+            conn.query_row("SELECT rowid FROM files WHERE path = 'b.md'", [], |r| {
+                r.get(0)
+            })
+            .unwrap()
+        };
 
         let rec = StructuralNodeRecord {
-            id: 200, file_id,
+            id: 200,
+            file_id,
             kind: "MdSection".into(),
             label: "Top".into(),
             path_joined: "Top".into(),
             path: vec!["Top".into()],
-            byte_range: (0, 100), line_range: (1, 10),
-            parent_id: None, depth: 0,
+            byte_range: (0, 100),
+            line_range: (1, 10),
+            parent_id: None,
+            depth: 0,
         };
-        store.upsert_structural_nodes(file_id, &[rec]).await.unwrap();
+        store
+            .upsert_structural_nodes(file_id, &[rec])
+            .await
+            .unwrap();
         let enclosing = store.enclosing_structural_node(file_id, 50).await.unwrap();
         assert!(enclosing.is_some());
         assert_eq!(enclosing.unwrap().label, "Top");
@@ -1164,32 +1225,46 @@ mod tests {
         let store = open_mem();
         let entry = make_entry("c.md", b"stuff");
         store.upsert_files(&[entry]).await.unwrap();
-        let conn = store.conn.lock().expect("poisoned");
-        let file_id: i64 = conn.query_row(
-            "SELECT rowid FROM files WHERE path = 'c.md'",
-            [], |r| r.get(0),
-        ).unwrap();
+        let file_id: i64 = {
+            let conn = store.conn.lock().expect("poisoned");
+            conn.query_row("SELECT rowid FROM files WHERE path = 'c.md'", [], |r| {
+                r.get(0)
+            })
+            .unwrap()
+        };
 
         let r1 = StructuralNodeRecord {
-            id: 300, file_id,
+            id: 300,
+            file_id,
             kind: "MdSection".into(),
             label: "Introduction".into(),
             path_joined: "Introduction".into(),
             path: vec!["Introduction".into()],
-            byte_range: (0, 50), line_range: (1, 5),
-            parent_id: None, depth: 0,
+            byte_range: (0, 50),
+            line_range: (1, 5),
+            parent_id: None,
+            depth: 0,
         };
         let r2 = StructuralNodeRecord {
-            id: 301, file_id,
+            id: 301,
+            file_id,
             kind: "MdSection".into(),
             label: "API Reference".into(),
             path_joined: "API Reference".into(),
             path: vec!["API Reference".into()],
-            byte_range: (50, 100), line_range: (6, 10),
-            parent_id: None, depth: 0,
+            byte_range: (50, 100),
+            line_range: (6, 10),
+            parent_id: None,
+            depth: 0,
         };
-        store.upsert_structural_nodes(file_id, &[r1, r2]).await.unwrap();
-        let hits = store.fts_search_structural("Introduction", None, 10).await.unwrap();
+        store
+            .upsert_structural_nodes(file_id, &[r1, r2])
+            .await
+            .unwrap();
+        let hits = store
+            .fts_search_structural("Introduction", None, 10)
+            .await
+            .unwrap();
         assert!(!hits.is_empty());
         assert!(hits.iter().any(|h| h.label == "Introduction"));
     }

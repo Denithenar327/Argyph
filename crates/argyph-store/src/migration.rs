@@ -12,10 +12,7 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "002_symbols_chunks_edges",
         include_str!("migrations/002_symbols_chunks_edges.sql"),
     ),
-    (
-        "003_vectors",
-        include_str!("migrations/003_vectors.sql"),
-    ),
+    ("003_vectors", include_str!("migrations/003_vectors.sql")),
     (
         "004_structural_nodes",
         include_str!("migrations/004_structural_nodes.sql"),

@@ -13,9 +13,7 @@ use argyph_parse::types::{ByteRange, Chunk, ChunkId, ChunkKind, Symbol, SymbolId
 
 use crate::error::Result;
 use crate::migration;
-use crate::search::{
-    HitSource, HybridSearchResult, SearchFilter, SearchHit, VectorEntry,
-};
+use crate::search::{HitSource, HybridSearchResult, SearchFilter, SearchHit, VectorEntry};
 use crate::Store;
 use crate::StructuralNodeRecord;
 
@@ -365,8 +363,15 @@ impl Store for SqliteStore {
             ))
         })?;
 
-        let all: Vec<(String, String, String, Option<String>, Option<String>, u64, u64)> =
-            rows.filter_map(|r| r.ok()).collect();
+        let all: Vec<(
+            String,
+            String,
+            String,
+            Option<String>,
+            Option<String>,
+            u64,
+            u64,
+        )> = rows.filter_map(|r| r.ok()).collect();
 
         let file_ids: HashSet<&str> = all.iter().map(|(id, ..)| id.as_str()).collect();
 
@@ -575,8 +580,7 @@ impl Store for SqliteStore {
                 .filter_map(|(cid, blob)| {
                     let stored_vec = blob_to_vector(&blob)?;
                     let stored_norm_inv = 1.0 / norm(&stored_vec).max(f32::MIN_POSITIVE);
-                    let cosine =
-                        dot(query_vec, &stored_vec) * query_norm_inv * stored_norm_inv;
+                    let cosine = dot(query_vec, &stored_vec) * query_norm_inv * stored_norm_inv;
                     Some((cid, cosine))
                 })
                 .collect();
@@ -635,9 +639,7 @@ impl Store for SqliteStore {
             return Ok(Vec::new());
         }
         let conn = self.conn.lock().expect("mutex poisoned");
-        let placeholders: Vec<String> = (1..=chunk_ids.len())
-            .map(|i| format!("?{i}"))
-            .collect();
+        let placeholders: Vec<String> = (1..=chunk_ids.len()).map(|i| format!("?{i}")).collect();
         let sql = format!(
             "SELECT id, text FROM chunks WHERE id IN ({})",
             placeholders.join(",")
@@ -660,12 +662,21 @@ impl Store for SqliteStore {
     // ---- Structural nodes ----
 
     #[allow(clippy::expect_used)]
-    async fn upsert_structural_nodes(&self, file_id: i64, nodes: &[StructuralNodeRecord]) -> Result<()> {
-        if nodes.is_empty() { return Ok(()); }
+    async fn upsert_structural_nodes(
+        &self,
+        file_id: i64,
+        nodes: &[StructuralNodeRecord],
+    ) -> Result<()> {
+        if nodes.is_empty() {
+            return Ok(());
+        }
         let mut conn = self.conn.lock().expect("mutex poisoned");
         let tx = conn.transaction()?;
         {
-            tx.execute("DELETE FROM structural_nodes WHERE file_id = ?1", params![file_id])?;
+            tx.execute(
+                "DELETE FROM structural_nodes WHERE file_id = ?1",
+                params![file_id],
+            )?;
             let mut stmt = tx.prepare_cached(
                 "INSERT INTO structural_nodes (id, file_id, kind, label, path_joined, path_json, byte_start, byte_end, line_start, line_end, parent_id, depth)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
@@ -673,11 +684,18 @@ impl Store for SqliteStore {
             for n in nodes {
                 let path_json = serde_json::to_string(&n.path).unwrap_or_default();
                 stmt.execute(params![
-                    n.id, n.file_id, n.kind.as_str(), n.label.as_str(),
-                    n.path_joined.as_str(), path_json.as_str(),
-                    n.byte_range.0 as i64, n.byte_range.1 as i64,
-                    n.line_range.0 as i64, n.line_range.1 as i64,
-                    n.parent_id, n.depth as i64,
+                    n.id,
+                    n.file_id,
+                    n.kind.as_str(),
+                    n.label.as_str(),
+                    n.path_joined.as_str(),
+                    path_json.as_str(),
+                    n.byte_range.0 as i64,
+                    n.byte_range.1 as i64,
+                    n.line_range.0 as i64,
+                    n.line_range.1 as i64,
+                    n.parent_id,
+                    n.depth as i64,
                 ])?;
             }
         }
@@ -686,26 +704,37 @@ impl Store for SqliteStore {
     }
 
     #[allow(clippy::expect_used)]
-    async fn get_structural_node_by_path(&self, file_id: Option<i64>, path_joined: &str) -> Result<Option<StructuralNodeRecord>> {
+    async fn get_structural_node_by_path(
+        &self,
+        file_id: Option<i64>,
+        path_joined: &str,
+    ) -> Result<Option<StructuralNodeRecord>> {
         let conn = self.conn.lock().expect("mutex poisoned");
         let result = if let Some(fid) = file_id {
             let mut stmt = conn.prepare_cached(
                 "SELECT id, file_id, kind, label, path_joined, path_json, byte_start, byte_end, line_start, line_end, parent_id, depth
                  FROM structural_nodes WHERE file_id = ?1 AND path_joined = ?2",
             )?;
-            stmt.query_row(params![fid, path_joined], row_to_structural_node).optional()?
+            stmt.query_row(params![fid, path_joined], row_to_structural_node)
+                .optional()?
         } else {
             let mut stmt = conn.prepare_cached(
                 "SELECT id, file_id, kind, label, path_joined, path_json, byte_start, byte_end, line_start, line_end, parent_id, depth
                  FROM structural_nodes WHERE path_joined = ?1 ORDER BY file_id, depth LIMIT 1",
             )?;
-            stmt.query_row(params![path_joined], row_to_structural_node).optional()?
+            stmt.query_row(params![path_joined], row_to_structural_node)
+                .optional()?
         };
         Ok(result)
     }
 
     #[allow(clippy::expect_used)]
-    async fn fts_search_structural(&self, query: &str, file_ids: Option<&[i64]>, limit: usize) -> Result<Vec<StructuralNodeRecord>> {
+    async fn fts_search_structural(
+        &self,
+        query: &str,
+        file_ids: Option<&[i64]>,
+        limit: usize,
+    ) -> Result<Vec<StructuralNodeRecord>> {
         let conn = self.conn.lock().expect("mutex poisoned");
         let mut stmt = conn.prepare_cached(
             "SELECT sn.id, sn.file_id, sn.kind, sn.label, sn.path_joined, sn.path_json, sn.byte_start, sn.byte_end, sn.line_start, sn.line_end, sn.parent_id, sn.depth
@@ -717,19 +746,21 @@ impl Store for SqliteStore {
         )?;
         let rows = stmt.query_map(params![query, limit as i64], row_to_structural_node)?;
         let mut out: Vec<StructuralNodeRecord> = Vec::new();
-        for row in rows {
-            if let Ok(rec) = row {
-                match file_ids {
-                    Some(ids) if !ids.contains(&rec.file_id) => continue,
-                    _ => out.push(rec),
-                }
+        for rec in rows.flatten() {
+            match file_ids {
+                Some(ids) if !ids.contains(&rec.file_id) => continue,
+                _ => out.push(rec),
             }
         }
         Ok(out)
     }
 
     #[allow(clippy::expect_used)]
-    async fn enclosing_structural_node(&self, file_id: i64, byte_offset: u32) -> Result<Option<StructuralNodeRecord>> {
+    async fn enclosing_structural_node(
+        &self,
+        file_id: i64,
+        byte_offset: u32,
+    ) -> Result<Option<StructuralNodeRecord>> {
         let conn = self.conn.lock().expect("mutex poisoned");
         let mut stmt = conn.prepare_cached(
             "SELECT id, file_id, kind, label, path_joined, path_json, byte_start, byte_end, line_start, line_end, parent_id, depth
@@ -738,7 +769,9 @@ impl Store for SqliteStore {
              ORDER BY (byte_end - byte_start) ASC
              LIMIT 1",
         )?;
-        let result = stmt.query_row(params![file_id, byte_offset as i64], row_to_structural_node).optional()?;
+        let result = stmt
+            .query_row(params![file_id, byte_offset as i64], row_to_structural_node)
+            .optional()?;
         Ok(result)
     }
 
@@ -749,7 +782,9 @@ impl Store for SqliteStore {
             "SELECT id, file_id, kind, label, path_joined, path_json, byte_start, byte_end, line_start, line_end, parent_id, depth
              FROM structural_nodes WHERE id = ?1",
         )?;
-        let result = stmt.query_row(params![id], row_to_structural_node).optional()?;
+        let result = stmt
+            .query_row(params![id], row_to_structural_node)
+            .optional()?;
         Ok(result)
     }
 }
@@ -780,9 +815,7 @@ fn row_to_structural_node(row: &Row) -> rusqlite::Result<StructuralNodeRecord> {
 // ---------------------------------------------------------------
 
 fn vector_to_blob(vec: &[f32]) -> Vec<u8> {
-    vec.iter()
-        .flat_map(|f| f32::to_le_bytes(*f))
-        .collect()
+    vec.iter().flat_map(|f| f32::to_le_bytes(*f)).collect()
 }
 
 fn blob_to_vector(blob: &[u8]) -> Option<Vec<f32>> {
@@ -1223,23 +1256,15 @@ fn build_vector_search_sql(
     (sql, params)
 }
 
-fn chunk_text_and_file(
-    conn: &Connection,
-    chunk_id: &str,
-) -> Result<(String, String)> {
-    let mut stmt =
-        conn.prepare_cached("SELECT text, file FROM chunks WHERE id = ?1")?;
+fn chunk_text_and_file(conn: &Connection, chunk_id: &str) -> Result<(String, String)> {
+    let mut stmt = conn.prepare_cached("SELECT text, file FROM chunks WHERE id = ?1")?;
     stmt.query_row(params![chunk_id], |row| {
         Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
     })
     .map_err(|e| e.into())
 }
 
-fn in_both(
-    bm25_hits: &[(String, f32)],
-    vector_hits: &[(String, f32)],
-    chunk_id: &str,
-) -> bool {
+fn in_both(bm25_hits: &[(String, f32)], vector_hits: &[(String, f32)], chunk_id: &str) -> bool {
     bm25_hits.iter().any(|(id, _)| id == chunk_id)
         && vector_hits.iter().any(|(id, _)| id == chunk_id)
 }
