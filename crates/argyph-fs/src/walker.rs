@@ -1,5 +1,6 @@
 use camino::{Utf8Path, Utf8PathBuf};
 use ignore::WalkBuilder;
+use rayon::prelude::*;
 use std::collections::HashSet;
 use std::time::SystemTime;
 
@@ -69,7 +70,7 @@ impl Walker for IgnoreWalker {
         let max_size = self.max_file_size;
         let allowed = self.allowed_extensions.clone();
 
-        WalkBuilder::new(root_abs.as_std_path())
+        let candidates: Vec<_> = WalkBuilder::new(root_abs.as_std_path())
             .standard_filters(true)
             .build()
             .filter_map(move |entry| {
@@ -111,23 +112,31 @@ impl Walker for IgnoreWalker {
                     return None;
                 }
 
-                let file_hash = match hash::hash_file(&abs) {
+                Some((rel, abs, metadata))
+            })
+            .collect();
+
+        candidates
+            .par_iter()
+            .filter_map(|(rel, abs, metadata)| {
+                let file_hash = match hash::hash_file(abs) {
                     Ok(h) => h,
                     Err(_) => return None,
                 };
 
                 let lang = rel.extension().and_then(Language::from_extension);
-
                 let modified = metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH);
 
                 Some(FileEntry {
-                    path: rel,
+                    path: rel.clone(),
                     hash: file_hash,
                     language: lang,
-                    size,
+                    size: metadata.len(),
                     modified,
                 })
             })
+            .collect::<Vec<_>>()
+            .into_iter()
     }
 }
 
@@ -165,7 +174,7 @@ impl Walker for PollingWalker {
             .unwrap_or_else(|_| root.to_path_buf());
         let max_size = self.max_file_size;
 
-        ignore::WalkBuilder::new(root_abs.as_std_path())
+        let candidates: Vec<_> = ignore::WalkBuilder::new(root_abs.as_std_path())
             .standard_filters(false)
             .hidden(false)
             .build()
@@ -188,17 +197,26 @@ impl Walker for PollingWalker {
                 if !path::is_symlink_safe(&abs, &root_abs) {
                     return None;
                 }
-                let file_hash = hash::hash_file(&abs).ok()?;
+                Some((rel, abs, metadata))
+            })
+            .collect();
+
+        candidates
+            .par_iter()
+            .filter_map(|(rel, abs, metadata)| {
+                let file_hash = hash::hash_file(abs).ok()?;
                 let lang = rel.extension().and_then(Language::from_extension);
                 let modified = metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH);
                 Some(FileEntry {
-                    path: rel,
+                    path: rel.clone(),
                     hash: file_hash,
                     language: lang,
-                    size,
+                    size: metadata.len(),
                     modified,
                 })
             })
+            .collect::<Vec<_>>()
+            .into_iter()
     }
 }
 

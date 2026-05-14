@@ -9,7 +9,7 @@ mod watcher;
 use camino::Utf8Path;
 use std::time::SystemTime;
 
-pub use hash::{hash_file, Blake3Hash};
+pub use hash::{hash_file, hash_files_parallel, Blake3Hash};
 pub use language::Language;
 pub use walker::{IgnoreWalker, PollingWalker};
 pub use watcher::{ChangeKind, ChangedPath, FileWatcher, FsWatcher, PollingWatcher};

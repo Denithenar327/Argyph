@@ -25,7 +25,23 @@ pub enum FileWatcher {
 
 impl FileWatcher {
     pub fn notify_watcher(root: &Utf8Path, debounce: Duration) -> std::io::Result<Self> {
-        Ok(Self::Notify(FsWatcher::new(root, debounce)?))
+        if std::env::var("ARGYPH_WATCHER").as_deref() == Ok("poll") {
+            tracing::warn!("ARGYPH_WATCHER=poll set — falling back to polling watcher");
+            return Ok(Self::poll_watcher(
+                root.to_path_buf(),
+                Duration::from_secs(5),
+            ));
+        }
+        match FsWatcher::new(root, debounce) {
+            Ok(w) => Ok(Self::Notify(w)),
+            Err(e) => {
+                tracing::warn!(error = %e, "native watcher unavailable (ENOSPC or OS limit), falling back to polling");
+                Ok(Self::poll_watcher(
+                    root.to_path_buf(),
+                    Duration::from_secs(5),
+                ))
+            }
+        }
     }
 
     pub fn poll_watcher(root: Utf8PathBuf, interval: Duration) -> Self {

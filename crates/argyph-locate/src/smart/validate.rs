@@ -25,6 +25,11 @@ impl SpanHistory {
         }
     }
 
+    /// All spans observed so far (insertion order not preserved).
+    pub fn all(&self) -> Vec<Span> {
+        self.by_id.values().cloned().collect()
+    }
+
     pub fn resolve(&self, selected: &[String]) -> Result<Vec<Span>, Vec<String>> {
         let mut out = Vec::with_capacity(selected.len());
         let mut missing = Vec::new();

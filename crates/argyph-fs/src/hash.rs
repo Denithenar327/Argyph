@@ -1,4 +1,5 @@
-use camino::Utf8Path;
+use camino::{Utf8Path, Utf8PathBuf};
+use rayon::prelude::*;
 use std::io;
 
 /// BLAKE3 hash output — 32 bytes (256 bits).
@@ -56,6 +57,17 @@ pub fn hash_file(path: &Utf8Path) -> io::Result<Blake3Hash> {
     let data = std::fs::read(path.as_std_path())?;
     let hash = blake3::hash(&data);
     Ok(Blake3Hash(*hash.as_bytes()))
+}
+
+/// Compute BLAKE3 hashes for multiple file-data pairs in parallel using rayon.
+pub fn hash_files_parallel(files: &[(Utf8PathBuf, Vec<u8>)]) -> Vec<(Utf8PathBuf, Blake3Hash)> {
+    files
+        .par_iter()
+        .map(|(path, data)| {
+            let hash = blake3::hash(data);
+            (path.clone(), Blake3Hash(*hash.as_bytes()))
+        })
+        .collect()
 }
 
 #[cfg(test)]

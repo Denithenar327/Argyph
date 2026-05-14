@@ -12,6 +12,28 @@ const MAX_EVENTS_PER_MINUTE: usize = 60;
 const WINDOW_SECS: u64 = 60;
 const POLL_INTERVAL_SECS: u64 = 5;
 
+pub fn should_force_poll() -> bool {
+    std::env::var("ARGYPH_WATCHER").as_deref() == Ok("poll")
+}
+
+pub fn create_watcher(root: &Utf8PathBuf, debounce: Duration) -> FileWatcher {
+    if should_force_poll() {
+        tracing::info!("ARGYPH_WATCHER=poll — using polling watcher");
+        FileWatcher::poll_watcher(root.clone(), Duration::from_secs(POLL_INTERVAL_SECS))
+    } else {
+        match FileWatcher::notify_watcher(root, debounce) {
+            Ok(w) => {
+                tracing::info!("using native filesystem watcher");
+                w
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "native watcher failed, falling back to polling");
+                FileWatcher::poll_watcher(root.clone(), Duration::from_secs(POLL_INTERVAL_SECS))
+            }
+        }
+    }
+}
+
 pub struct WatcherOrchestrator {
     root: Utf8PathBuf,
     watcher: RwLock<FileWatcher>,

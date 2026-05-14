@@ -9,7 +9,6 @@ use tokio::sync::RwLock;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 
-use argyph_fs::FileWatcher;
 use argyph_store::SqliteStore;
 use argyph_store::Store;
 
@@ -41,7 +40,7 @@ impl Supervisor {
             Arc::new(sqlite)
         };
 
-        let embedder = build_embedder();
+        let (embedder, tier2_concurrency) = build_embedder();
         let embedder_for_t2 = Arc::clone(&embedder);
 
         let index = Arc::new(Index::new(Arc::clone(&store), Arc::clone(&embedder)));
@@ -148,7 +147,8 @@ impl Supervisor {
                 };
 
                 tracing::info!("Tier 2 starting semantic embedding");
-                match tiers::run_tier2(store_for_t2, embedder, progress_tx).await {
+                match tiers::run_tier2(store_for_t2, embedder, progress_tx, tier2_concurrency).await
+                {
                     Ok(()) => {
                         *tier_for_t2.write().await = TierState::Ready;
                         tracing::info!("Tier 2 ready — all chunks embedded");
@@ -161,23 +161,18 @@ impl Supervisor {
         }
 
         let mut sup = sup;
-        let watcher = FileWatcher::notify_watcher(&root_clone, Duration::from_millis(500)).ok();
+        let watcher = crate::watcher::create_watcher(&root_clone, Duration::from_millis(500));
 
-        if let Some(watcher) = watcher {
-            let orch = crate::watcher::WatcherOrchestrator::new(
-                root_clone.clone(),
-                watcher,
-                store_clone,
-                tier_state_clone,
-            );
-            sup.spawn(async move {
-                orch.run().await;
-            });
-            sup.watcher_active = true;
-            tracing::info!("filesystem watcher active");
-        } else {
-            tracing::warn!("filesystem watcher unavailable (ENOSPC or OS limit)");
-        }
+        let orch = crate::watcher::WatcherOrchestrator::new(
+            root_clone.clone(),
+            watcher,
+            store_clone,
+            tier_state_clone,
+        );
+        sup.spawn(async move {
+            orch.run().await;
+        });
+        sup.watcher_active = true;
 
         Ok(sup)
     }
@@ -252,20 +247,19 @@ impl Supervisor {
     }
 }
 
-fn build_embedder() -> Arc<OnceLock<Arc<dyn Embedder>>> {
+fn build_embedder() -> (Arc<OnceLock<Arc<dyn Embedder>>>, usize) {
+    let provider = if std::env::var("OPENAI_API_KEY").is_ok() {
+        Provider::OpenAi
+    } else {
+        Provider::Local
+    };
+    let tier2_concurrency = provider.default_concurrency();
+    let config = EmbedConfig::for_provider(&provider);
     let slot = Arc::new(OnceLock::new());
     let slot_clone = Arc::clone(&slot);
     tokio::task::spawn(async move {
-        let result = tokio::task::spawn_blocking(move || {
-            let provider = if std::env::var("OPENAI_API_KEY").is_ok() {
-                Provider::OpenAi
-            } else {
-                Provider::Local
-            };
-            let config = EmbedConfig::default();
-            argyph_embed::build(provider, config)
-        })
-        .await;
+        let result =
+            tokio::task::spawn_blocking(move || argyph_embed::build(provider, config)).await;
         match result {
             Ok(Ok(e)) => {
                 let _ = slot_clone.set(e);
@@ -278,7 +272,7 @@ fn build_embedder() -> Arc<OnceLock<Arc<dyn Embedder>>> {
             }
         }
     });
-    slot
+    (slot, tier2_concurrency)
 }
 
 #[cfg(test)]

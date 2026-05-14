@@ -165,21 +165,36 @@ pub async fn handle(
         }
         Err(SmartError::BudgetExceeded {
             steps_taken,
-            partial: _,
-        }) => LocateSmartResponse {
-            spans: None,
-            strategy_used: None,
-            reasoning_summary: None,
-            steps_taken: Some(steps_taken),
-            index_coverage: None,
-            error: Some(McpErrorBody {
-                code: ErrorCode::LocateSmartBudgetExceeded,
-                message: format!("step budget exhausted after {steps_taken} steps"),
-                retryable: false,
-                retry_after_ms: None,
-                correlation_id: None,
-            }),
-        },
+            partial,
+        }) => {
+            // Best-effort: surface the spans collected so far alongside the
+            // budget-exceeded marker so the caller can still use them.
+            let (spans, summary, coverage) = match partial {
+                Some(p) => (
+                    Some(serde_json::to_value(&p.spans).unwrap_or(serde_json::json!([]))),
+                    Some(p.reasoning_summary),
+                    Some(serde_json::json!({
+                        "tier_1_5": p.index_coverage.tier_1_5,
+                        "tier_2": p.index_coverage.tier_2,
+                    })),
+                ),
+                None => (None, None, None),
+            };
+            LocateSmartResponse {
+                spans,
+                strategy_used: Some("smart".into()),
+                reasoning_summary: summary,
+                steps_taken: Some(steps_taken),
+                index_coverage: coverage,
+                error: Some(McpErrorBody {
+                    code: ErrorCode::LocateSmartBudgetExceeded,
+                    message: format!("budget exhausted after {steps_taken} steps"),
+                    retryable: false,
+                    retry_after_ms: None,
+                    correlation_id: None,
+                }),
+            }
+        }
         Err(SmartError::FabricatedNodeIds(ids)) => LocateSmartResponse {
             spans: None,
             strategy_used: None,
@@ -188,9 +203,7 @@ pub async fn handle(
             index_coverage: None,
             error: Some(McpErrorBody {
                 code: ErrorCode::Internal,
-                message: format!(
-                    "model returned node_ids not produced in this loop: {ids:?}"
-                ),
+                message: format!("model returned node_ids not produced in this loop: {ids:?}"),
                 retryable: false,
                 retry_after_ms: None,
                 correlation_id: None,

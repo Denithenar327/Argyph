@@ -1,17 +1,37 @@
 {
-    "name": "argyph",
-    "display_name": "Argyph",
-    "description": "Local-first MCP server for fast, structured, and semantic code context",
-    "version": "0.1.0",
-    "mcpServers": {
-        "argyph": {
-            "command": "argyph",
-            "args": ["serve"],
-            "env": {}
-        }
-    },
-    "icon": "icon.png",
-    "homepage": "https://github.com/Ezzy1630/argyph",
-    "author": "Ezzy1630",
-    "license": "MIT OR Apache-2.0"
+  "dxt_version": "0.1",
+  "name": "argyph",
+  "display_name": "Argyph",
+  "description": "Local-first MCP server for fast, structured, and semantic code context",
+  "version": "1.0.0-rc.1",
+  "mcpServers": {
+    "argyph": {
+      "command": "argyph",
+      "args": ["serve"],
+      "env": {}
+    }
+  },
+  "toolDescriptions": {
+    "get_index_status": "Report the readiness of all index tiers (cheap, safe to poll)",
+    "get_repo_overview": "Tier-0 summary: file tree, language mix, sizes",
+    "search_text": "Pure regex/literal grep across the repo (Tier 0)",
+    "search_semantic": "Hybrid BM25 + vector search over AST-aware chunks (Tier 2)",
+    "find_definition": "Locate symbol definitions by name (Tier 1)",
+    "find_references": "Find references for a symbol id or name (Tier 1)",
+    "get_callers": "Functions calling a given symbol, grouped by caller (Tier 1)",
+    "get_callees": "Functions called by a given symbol (Tier 1)",
+    "get_imports": "Files imported by a file and files that import it (Tier 1)",
+    "get_symbol_outline": "Hierarchical outline of a source file's symbols (Tier 1)",
+    "pack_repo": "Token-budgeted XML/markdown pack of the repo for AI consumption",
+    "locate": "Smallest natural span containing a structured path or NL query — code, markdown, JSON, YAML, TOML, CSV (Tier 1.5)",
+    "locate_smart": "AI-guided multi-step locate (opt-in; requires provider config)",
+    "memory_save": "Persist a memory entry under a scope with optional metadata",
+    "memory_search": "Full-text search persistent memories, optionally scope-filtered",
+    "memory_list": "List memories in a scope",
+    "memory_forget": "Delete a memory entry by id"
+  },
+  "icon": "icon.png",
+  "homepage": "https://github.com/Ezzy1630/argyph",
+  "author": "Ezzy1630",
+  "license": "MIT OR Apache-2.0"
 }

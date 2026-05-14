@@ -79,10 +79,12 @@ pub async fn dispatch(
                 .to_string();
             let start = args["byte_range"][0]
                 .as_u64()
-                .ok_or_else(|| anyhow::anyhow!("read_file_range: bad byte_range[0]"))? as u32;
+                .ok_or_else(|| anyhow::anyhow!("read_file_range: bad byte_range[0]"))?
+                as u32;
             let end = args["byte_range"][1]
                 .as_u64()
-                .ok_or_else(|| anyhow::anyhow!("read_file_range: bad byte_range[1]"))? as u32;
+                .ok_or_else(|| anyhow::anyhow!("read_file_range: bad byte_range[1]"))?
+                as u32;
             let capped_end = std::cmp::min(end, start.saturating_add(max_bytes_per_read));
             let full_path = ctx.root.join(&file);
             let content = std::fs::read_to_string(&full_path).unwrap_or_default();
@@ -113,8 +115,42 @@ pub async fn dispatch(
             })
         }
         "get_repo_overview" => {
-            // TODO: Store does not expose repo_overview; requires Supervisor/Index from argyph-core.
-            anyhow::bail!("get_repo_overview: not yet implemented in locate-smart context")
+            // Build a compact overview directly from Store::list_files — total file
+            // count, total bytes, and per-language counts. Avoids pulling in
+            // Supervisor/Index (which would create a dependency cycle).
+            let files = ctx.store.list_files().await?;
+            let total_files = files.len();
+            let total_bytes: u64 = files.iter().map(|f| f.size).sum();
+            let mut by_language: std::collections::BTreeMap<String, usize> =
+                std::collections::BTreeMap::new();
+            for f in &files {
+                let lang = match f.language {
+                    Some(ref l) => format!("{l:?}").to_lowercase(),
+                    None => "unknown".into(),
+                };
+                *by_language.entry(lang).or_insert(0) += 1;
+            }
+            // Top 12 files by size — gives the model a sense of "what's big".
+            let mut by_size: Vec<&argyph_fs::FileEntry> = files.iter().collect();
+            by_size.sort_by_key(|f| std::cmp::Reverse(f.size));
+            let top: Vec<serde_json::Value> = by_size
+                .iter()
+                .take(12)
+                .map(|f| {
+                    serde_json::json!({
+                        "path": f.path.as_str(),
+                        "size": f.size,
+                    })
+                })
+                .collect();
+            Ok(SubToolOutput::RepoOverview {
+                overview: serde_json::json!({
+                    "total_files": total_files,
+                    "total_bytes": total_bytes,
+                    "by_language": by_language,
+                    "largest_files": top,
+                }),
+            })
         }
         other => {
             anyhow::bail!(

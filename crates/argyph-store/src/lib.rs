@@ -6,6 +6,8 @@ pub mod schema;
 pub mod search;
 mod sqlite;
 
+use std::collections::HashMap;
+
 use argyph_fs::FileEntry;
 use argyph_graph::edge::{Edge, EdgeKind};
 use argyph_graph::graph::SymbolOutline;
@@ -16,6 +18,15 @@ use camino::Utf8Path;
 pub use error::{Result, StoreError};
 pub use search::{HitSource, HybridSearchResult, SearchFilter, SearchHit, VectorEntry};
 pub use sqlite::SqliteStore;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MemoryEntry {
+    pub id: String,
+    pub scope: String,
+    pub content: String,
+    pub metadata: HashMap<String, String>,
+    pub created_at: String,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StructuralNodeRecord {
@@ -157,6 +168,24 @@ pub trait Store: Send + Sync {
     ) -> Result<Option<StructuralNodeRecord>>;
 
     async fn structural_node_by_id(&self, id: i64) -> Result<Option<StructuralNodeRecord>>;
+
+    async fn save_memory(
+        &self,
+        scope: &str,
+        content: &str,
+        metadata: &HashMap<String, String>,
+    ) -> Result<String>;
+
+    async fn search_memories(
+        &self,
+        query: &str,
+        scope: Option<&str>,
+        k: usize,
+    ) -> Result<Vec<MemoryEntry>>;
+
+    async fn list_memories(&self, scope: &str) -> Result<Vec<MemoryEntry>>;
+
+    async fn forget_memory(&self, id: &str) -> Result<()>;
 
     /// Flush and close the store. The store may not be used after calling this.
     async fn close(&self) -> Result<()> {

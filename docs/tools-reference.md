@@ -715,6 +715,92 @@ Each prompt internally chains the relevant tools so the agent doesn't have to.
 
 ---
 
+## Memory
+
+### `memory_save`
+
+**Request**
+
+```ts
+{
+  scope: string;                          // any identifier; "repo" default in clients
+  content: string;
+  metadata?: Record<string, string>;
+}
+```
+
+**Response**
+
+```ts
+{ id?: string; error?: McpError }
+```
+
+`id` is the memory's content-addressed identifier. Use it with `memory_forget`.
+
+### `memory_search`
+
+**Request**
+
+```ts
+{
+  query: string;
+  scope?: string;                         // omit to search all scopes
+  k?: number;                             // default 10, clamped to [1, 100]
+}
+```
+
+**Response**
+
+```ts
+{
+  hits: Array<{
+    id: string;
+    scope: string;
+    content: string;
+    metadata: Record<string, string>;
+    created_at: string;                   // ISO-8601
+  }>;
+  error?: McpError;
+}
+```
+
+Backed by SQLite FTS5 over `content`.
+
+### `memory_list`
+
+**Request**
+
+```ts
+{ scope: string }
+```
+
+**Response**
+
+```ts
+{
+  hits: Array<{ id; scope; content; metadata; created_at }>;
+  error?: McpError;
+}
+```
+
+### `memory_forget`
+
+**Request**
+
+```ts
+{ id: string }
+```
+
+**Response**
+
+```ts
+{ forgotten: boolean; error?: McpError }
+```
+
+`forgotten: false` when no memory with that `id` existed.
+
+---
+
 ## Validation rules (applied before any tool runs)
 
 - All paths are normalized to repo-relative, UTF-8. `..` traversal outside the repo root is hard-rejected.

@@ -14,6 +14,7 @@ use argyph_parse::types::{ByteRange, Chunk, ChunkId, ChunkKind, Symbol, SymbolId
 use crate::error::Result;
 use crate::migration;
 use crate::search::{HitSource, HybridSearchResult, SearchFilter, SearchHit, VectorEntry};
+use crate::MemoryEntry;
 use crate::Store;
 use crate::StructuralNodeRecord;
 
@@ -831,6 +832,89 @@ impl Store for SqliteStore {
             .optional()?;
         Ok(result)
     }
+
+    // ---- Memory operations ----
+
+    #[allow(clippy::expect_used)]
+    async fn save_memory(
+        &self,
+        scope: &str,
+        content: &str,
+        metadata: &HashMap<String, String>,
+    ) -> Result<String> {
+        let id = uuid::Uuid::new_v4().to_string();
+        let metadata_json = serde_json::to_string(metadata).unwrap_or_else(|_| "{}".to_string());
+        let conn = self.conn.lock().expect("mutex poisoned");
+        conn.execute(
+            "INSERT INTO memories (id, scope, content, metadata) VALUES (?1, ?2, ?3, ?4)",
+            params![id, scope, content, metadata_json],
+        )?;
+        Ok(id)
+    }
+
+    #[allow(clippy::expect_used)]
+    async fn search_memories(
+        &self,
+        query: &str,
+        scope: Option<&str>,
+        k: usize,
+    ) -> Result<Vec<MemoryEntry>> {
+        let conn = self.conn.lock().expect("mutex poisoned");
+
+        let sql = if scope.is_some() {
+            "SELECT m.id, m.scope, m.content, m.metadata, m.created_at
+             FROM memories_fts fts
+             JOIN memories m ON m.rowid = fts.rowid
+             WHERE memories_fts MATCH ?1 AND m.scope = ?2
+             ORDER BY rank
+             LIMIT ?3"
+        } else {
+            "SELECT m.id, m.scope, m.content, m.metadata, m.created_at
+             FROM memories_fts fts
+             JOIN memories m ON m.rowid = fts.rowid
+             WHERE memories_fts MATCH ?1
+             ORDER BY rank
+             LIMIT ?2"
+        };
+
+        let mut entries = Vec::new();
+        if let Some(s) = scope {
+            let mut stmt = conn.prepare_cached(sql)?;
+            let rows = stmt.query_map(params![query, s, k as i64], row_to_memory_entry)?;
+            for row in rows {
+                entries.push(row?);
+            }
+        } else {
+            let mut stmt = conn.prepare_cached(sql)?;
+            let rows = stmt.query_map(params![query, k as i64], row_to_memory_entry)?;
+            for row in rows {
+                entries.push(row?);
+            }
+        }
+
+        Ok(entries)
+    }
+
+    #[allow(clippy::expect_used)]
+    async fn list_memories(&self, scope: &str) -> Result<Vec<MemoryEntry>> {
+        let conn = self.conn.lock().expect("mutex poisoned");
+        let mut stmt = conn.prepare_cached(
+            "SELECT id, scope, content, metadata, created_at FROM memories WHERE scope = ?1 ORDER BY created_at DESC",
+        )?;
+        let rows = stmt.query_map(params![scope], row_to_memory_entry)?;
+        let mut entries = Vec::new();
+        for row in rows {
+            entries.push(row?);
+        }
+        Ok(entries)
+    }
+
+    #[allow(clippy::expect_used)]
+    async fn forget_memory(&self, id: &str) -> Result<()> {
+        let conn = self.conn.lock().expect("mutex poisoned");
+        conn.execute("DELETE FROM memories WHERE id = ?1", params![id])?;
+        Ok(())
+    }
 }
 
 // ---------------------------------------------------------------
@@ -851,6 +935,23 @@ fn row_to_structural_node(row: &Row) -> rusqlite::Result<StructuralNodeRecord> {
         line_range: (row.get::<_, i64>(8)? as u32, row.get::<_, i64>(9)? as u32),
         parent_id: row.get(10)?,
         depth: row.get::<_, i64>(11)? as u16,
+    })
+}
+
+fn row_to_memory_entry(row: &Row) -> rusqlite::Result<MemoryEntry> {
+    let id: String = row.get(0)?;
+    let scope: String = row.get(1)?;
+    let content: String = row.get(2)?;
+    let metadata_json: String = row.get(3)?;
+    let created_at: String = row.get(4)?;
+    let metadata: HashMap<String, String> =
+        serde_json::from_str(&metadata_json).unwrap_or_default();
+    Ok(MemoryEntry {
+        id,
+        scope,
+        content,
+        metadata,
+        created_at,
     })
 }
 

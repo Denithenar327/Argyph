@@ -25,7 +25,10 @@ struct Fixture {
 
 fn setup_fixture() -> Fixture {
     let dir = tempfile::tempdir().unwrap();
-    let src = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/locate"));
+    let src = std::path::Path::new(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/locate"
+    ));
     let dst = dir.path().join("repo");
     copy_dir_all(src, &dst).unwrap();
     Fixture {

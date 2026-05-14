@@ -110,13 +110,34 @@ async fn record_to_span(
 
     let current_hash = compute_blake3(&file_content);
     let indexed_hash_bytes = file_entry.hash.as_bytes();
-    if current_hash != *indexed_hash_bytes {
-        tracing::warn!(
-            "STALE_INDEX: file {file_path} modified since indexing; results may be imprecise"
-        );
-    }
 
-    let byte_start = rec.byte_range.0 as usize;
+    // STALE_INDEX recovery: when the on-disk content has drifted from what the
+    // indexer last saw, fall back to re-parsing the live file and serve the
+    // span from the matching node in the fresh parse. We still emit a tracing
+    // warning so operators know a watcher-driven reindex is pending.
+    let mut rec_owned: Option<StructuralNodeRecord> = None;
+    let effective_rec: &StructuralNodeRecord = if current_hash != *indexed_hash_bytes {
+        tracing::warn!(
+            file = %file_path,
+            "STALE_INDEX: file modified since indexing; reparsing inline"
+        );
+        if let Some(lang) = file_entry.language {
+            let fresh = parse_structural(lang, rec.file_id, &file_content);
+            if let Some(found) = fresh
+                .iter()
+                .find(|r| r.path_joined == rec.path_joined && r.label == rec.label)
+                .or_else(|| fresh.iter().find(|r| r.path_joined == rec.path_joined))
+                .cloned()
+            {
+                rec_owned = Some(found);
+            }
+        }
+        rec_owned.as_ref().unwrap_or(rec)
+    } else {
+        rec
+    };
+
+    let byte_start = effective_rec.byte_range.0 as usize;
 
     let mut content = if byte_start < file_content.len() {
         let end = (byte_start + max_bytes as usize).min(file_content.len());
@@ -125,7 +146,7 @@ async fn record_to_span(
         String::new()
     };
 
-    let truncated = rec.byte_range.1 - rec.byte_range.0 > max_bytes;
+    let truncated = effective_rec.byte_range.1 - effective_rec.byte_range.0 > max_bytes;
     if truncated && !content.is_empty() {
         let ellipsis = "\n... (truncated)";
         let usable = max_bytes as usize - ellipsis.len();
@@ -135,7 +156,7 @@ async fn record_to_span(
         content.push_str(ellipsis);
     }
 
-    let parent: Option<ExpandTarget> = if let Some(pid) = rec.parent_id {
+    let parent: Option<ExpandTarget> = if let Some(pid) = effective_rec.parent_id {
         if let Ok(Some(parent_rec)) = store.structural_node_by_id(pid).await {
             Some(ExpandTarget {
                 node_id: Some(parent_rec.id.to_string()),
@@ -155,14 +176,17 @@ async fn record_to_span(
         bytes: file_size,
     };
 
-    let node_id = format!("{}:{}:{}", file_path, rec.byte_range.0, rec.byte_range.1);
+    let node_id = format!(
+        "{}:{}:{}",
+        file_path, effective_rec.byte_range.0, effective_rec.byte_range.1
+    );
     Ok(Span {
         node_id,
         file: file_path,
-        byte_range: rec.byte_range,
-        line_range: rec.line_range,
-        kind: rec.kind.clone(),
-        path: rec.path.clone(),
+        byte_range: effective_rec.byte_range,
+        line_range: effective_rec.line_range,
+        kind: effective_rec.kind.clone(),
+        path: effective_rec.path.clone(),
         content,
         score,
         truncated,

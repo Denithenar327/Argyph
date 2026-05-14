@@ -16,6 +16,9 @@ pub enum CoreError {
 
     #[error("embedding error: {0}")]
     Embed(String),
+
+    #[error("{0}")]
+    Other(String),
 }
 
 pub type Result<T> = std::result::Result<T, CoreError>;

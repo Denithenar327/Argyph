@@ -180,6 +180,54 @@ impl ArgyphMcp {
         let response = tools::locate_smart::handle(&self.supervisor, &self.root, req).await;
         Json(response)
     }
+
+    #[tool(
+        name = "memory_save",
+        description = "Persist a memory entry under a given scope with optional metadata."
+    )]
+    async fn memory_save(
+        &self,
+        Parameters(req): Parameters<tools::memory_save::Request>,
+    ) -> Json<tools::memory_save::Response> {
+        let response = tools::memory_save::handle(&self.supervisor, &self.root, req).await;
+        Json(response)
+    }
+
+    #[tool(
+        name = "memory_search",
+        description = "Search memories by content using FTS5. Optionally filter by scope."
+    )]
+    async fn memory_search(
+        &self,
+        Parameters(req): Parameters<tools::memory_search::Request>,
+    ) -> Json<tools::memory_search::Response> {
+        let response = tools::memory_search::handle(&self.supervisor, &self.root, req).await;
+        Json(response)
+    }
+
+    #[tool(
+        name = "memory_list",
+        description = "List all memories in a given scope."
+    )]
+    async fn memory_list(
+        &self,
+        Parameters(req): Parameters<tools::memory_list::Request>,
+    ) -> Json<tools::memory_list::Response> {
+        let response = tools::memory_list::handle(&self.supervisor, &self.root, req).await;
+        Json(response)
+    }
+
+    #[tool(
+        name = "memory_forget",
+        description = "Delete a memory entry by its ID."
+    )]
+    async fn memory_forget(
+        &self,
+        Parameters(req): Parameters<tools::memory_forget::Request>,
+    ) -> Json<tools::memory_forget::Response> {
+        let response = tools::memory_forget::handle(&self.supervisor, &self.root, req).await;
+        Json(response)
+    }
 }
 
 #[tool_handler]

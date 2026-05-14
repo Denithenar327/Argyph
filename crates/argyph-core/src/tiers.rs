@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::SystemTime;
 
@@ -11,7 +12,8 @@ use argyph_parse::Parser;
 use argyph_store::search::VectorEntry;
 use argyph_store::Store;
 use camino::{Utf8Path, Utf8PathBuf};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, Semaphore};
+use tokio::task::JoinSet;
 
 use crate::error::Result;
 
@@ -153,9 +155,6 @@ pub async fn run_tier1(root: &Utf8Path, store: &dyn Store) -> Result<u64> {
 
 #[tracing::instrument(skip(store), fields(root = %root.as_str()))]
 pub async fn run_tier1_5(store: &dyn Store, root: &Utf8Path, max_file_bytes: u64) -> Result<usize> {
-    use argyph_parse::structural::{self, StructuralNode};
-    use argyph_store::StructuralNodeRecord;
-
     tracing::info!("starting Tier 1.5 structural indexing");
     let files = store.list_files().await?;
 
@@ -166,55 +165,73 @@ pub async fn run_tier1_5(store: &dyn Store, root: &Utf8Path, max_file_bytes: u64
 
     let mut count = 0usize;
     for f in &candidates {
-        let path = root.join(f.path.as_str());
-        let Ok(source) = std::fs::read_to_string(path.as_str()) else {
-            continue;
-        };
-
-        let Some(lang) = f.language else {
-            continue;
-        };
-        let file_key = f.path.as_str().len() as u64;
-        let nodes: Vec<StructuralNode> = match lang {
-            Language::Markdown => structural::markdown::parse(file_key, &source),
-            Language::Json => structural::json::parse(file_key, &source),
-            Language::Yaml => structural::yaml::parse(file_key, &source),
-            Language::Toml => structural::toml_parser::parse(file_key, &source),
-            Language::Csv => structural::csv::parse(file_key, &source),
-            _ => continue,
-        };
-
-        if nodes.is_empty() {
-            continue;
+        if reindex_structural_for_file(store, root, f).await.is_ok() {
+            count += 1;
         }
-
-        let file_id = match store.get_file_id(&f.path).await {
-            Ok(Some(id)) => id,
-            _ => continue,
-        };
-
-        let records: Vec<StructuralNodeRecord> = nodes
-            .into_iter()
-            .map(|n| StructuralNodeRecord {
-                id: n.id.0 as i64,
-                file_id,
-                kind: format!("{:?}", n.kind),
-                label: n.label,
-                path_joined: n.path.join("/"),
-                path: n.path,
-                byte_range: (n.byte_range.0 as u32, n.byte_range.1 as u32),
-                line_range: n.line_range,
-                parent_id: n.parent.map(|p| p.0 as i64),
-                depth: n.depth as u16,
-            })
-            .collect();
-
-        store.upsert_structural_nodes(file_id, &records).await?;
-        count += 1;
     }
 
     tracing::info!(structural_files = count, "Tier 1.5 complete");
     Ok(count)
+}
+
+/// Re-parse and upsert structural nodes for a single (non-code) file.
+/// Returns Ok(()) when records were written, an error otherwise.
+/// `upsert_structural_nodes` clears existing rows for the file first,
+/// so this safely handles "file changed" as well as "file added".
+async fn reindex_structural_for_file(
+    store: &dyn Store,
+    root: &Utf8Path,
+    f: &FileEntry,
+) -> Result<()> {
+    use argyph_parse::structural::{self, StructuralNode};
+    use argyph_store::StructuralNodeRecord;
+
+    let path = root.join(f.path.as_str());
+    let source = std::fs::read_to_string(path.as_str())
+        .map_err(|e| crate::error::CoreError::Other(format!("read failed: {e}")))?;
+
+    let lang = f
+        .language
+        .ok_or_else(|| crate::error::CoreError::Other("no language".into()))?;
+    let file_key = f.path.as_str().len() as u64;
+    let nodes: Vec<StructuralNode> = match lang {
+        Language::Markdown => structural::markdown::parse(file_key, &source),
+        Language::Json => structural::json::parse(file_key, &source),
+        Language::Yaml => structural::yaml::parse(file_key, &source),
+        Language::Toml => structural::toml_parser::parse(file_key, &source),
+        Language::Csv => structural::csv::parse(file_key, &source),
+        _ => {
+            return Err(crate::error::CoreError::Other(
+                "non-structural language".into(),
+            ))
+        }
+    };
+
+    let file_id = store
+        .get_file_id(&f.path)
+        .await?
+        .ok_or_else(|| crate::error::CoreError::Other("file_id missing".into()))?;
+
+    let records: Vec<StructuralNodeRecord> = nodes
+        .into_iter()
+        .map(|n| StructuralNodeRecord {
+            id: n.id.0 as i64,
+            file_id,
+            kind: format!("{:?}", n.kind),
+            label: n.label,
+            path_joined: n.path.join("/"),
+            path: n.path,
+            byte_range: (n.byte_range.0 as u32, n.byte_range.1 as u32),
+            line_range: n.line_range,
+            parent_id: n.parent.map(|p| p.0 as i64),
+            depth: n.depth as u16,
+        })
+        .collect();
+
+    // Always upsert (even when empty) so a file that no longer has any
+    // structural nodes gets its stale rows cleared.
+    store.upsert_structural_nodes(file_id, &records).await?;
+    Ok(())
 }
 
 /// Progress update emitted during Tier 2 embedding.
@@ -229,12 +246,16 @@ pub async fn run_tier2(
     store: Arc<dyn Store>,
     embedder: Arc<dyn Embedder>,
     progress_tx: mpsc::UnboundedSender<Tier2Progress>,
+    concurrency: usize,
 ) -> Result<()> {
     let model = embedder.model_id().to_string();
     let dim = embedder.dimension();
     let batch_size = 32;
+    let sem = Arc::new(Semaphore::new(concurrency));
+    let pending = Arc::new(AtomicUsize::new(0));
+    const BACKPRESSURE_THRESHOLD: usize = 10_000;
 
-    tracing::info!(model = %model, dim, "Tier 2 embedding started");
+    tracing::info!(model = %model, dim, concurrency, "Tier 2 embedding started");
 
     loop {
         let missing = store.missing_vectors(&model).await?;
@@ -243,57 +264,86 @@ pub async fn run_tier2(
         }
 
         let total = missing.len();
-        let mut done = 0usize;
+        let done = Arc::new(AtomicUsize::new(0));
+        let mut join_set: JoinSet<Result<()>> = JoinSet::new();
 
         for chunk_ids in missing.chunks(batch_size) {
-            let pairs = store.get_chunk_texts(chunk_ids).await?;
-
-            let chunk_order: Vec<&str> = chunk_ids.iter().map(|s| s.as_str()).collect();
-            let text_map: std::collections::HashMap<&str, &str> = pairs
-                .iter()
-                .map(|(id, text)| (id.as_str(), text.as_str()))
-                .collect();
-
-            let texts: Vec<String> = chunk_order
-                .iter()
-                .filter_map(|id| text_map.get(id).map(|t| t.to_string()))
-                .collect();
-
-            if texts.is_empty() {
-                done += chunk_ids.len();
-                let _ = progress_tx.send(Tier2Progress {
-                    embedded: done,
-                    total,
-                });
-                tokio::task::yield_now().await;
-                continue;
+            while pending.load(Ordering::Relaxed) > BACKPRESSURE_THRESHOLD {
+                if let Some(res) = join_set.join_next().await {
+                    res.map_err(|e| crate::CoreError::Embed(format!("task join error: {e}")))??;
+                }
             }
 
-            let embeddings = embedder
-                .embed(&texts)
-                .await
-                .map_err(|e| crate::CoreError::Embed(format!("{e}")))?;
+            let chunk_ids = chunk_ids.to_vec();
+            let n = chunk_ids.len();
+            pending.fetch_add(n, Ordering::Relaxed);
 
-            let entries: Vec<VectorEntry> = chunk_ids
-                .iter()
-                .zip(embeddings.iter())
-                .map(|(id, vec)| VectorEntry {
-                    chunk_id: id.clone(),
-                    vector: vec.clone(),
-                    model: model.clone(),
-                    dimension: dim,
-                })
-                .collect();
+            let store = Arc::clone(&store);
+            let embedder = Arc::clone(&embedder);
+            let progress_tx = progress_tx.clone();
+            let model = model.clone();
+            let sem = Arc::clone(&sem);
+            let pending = Arc::clone(&pending);
+            let done = Arc::clone(&done);
 
-            store.upsert_vectors(&entries).await?;
-            done += chunk_ids.len();
+            join_set.spawn(async move {
+                let result = async {
+                    let _permit = Arc::clone(&sem)
+                        .acquire_owned()
+                        .await
+                        .map_err(|_| crate::CoreError::Embed("semaphore closed".into()))?;
 
-            let _ = progress_tx.send(Tier2Progress {
-                embedded: done,
-                total,
+                    let pairs = store.get_chunk_texts(&chunk_ids).await?;
+
+                    let chunk_order: Vec<&str> = chunk_ids.iter().map(|s| s.as_str()).collect();
+                    let text_map: std::collections::HashMap<&str, &str> = pairs
+                        .iter()
+                        .map(|(id, text)| (id.as_str(), text.as_str()))
+                        .collect();
+
+                    let texts: Vec<String> = chunk_order
+                        .iter()
+                        .filter_map(|id| text_map.get(id).map(|t| t.to_string()))
+                        .collect();
+
+                    if texts.is_empty() {
+                        return Ok(());
+                    }
+
+                    let embeddings = embedder
+                        .embed(&texts)
+                        .await
+                        .map_err(|e| crate::CoreError::Embed(format!("{e}")))?;
+
+                    let entries: Vec<VectorEntry> = chunk_ids
+                        .iter()
+                        .zip(embeddings.iter())
+                        .map(|(id, vec)| VectorEntry {
+                            chunk_id: id.clone(),
+                            vector: vec.clone(),
+                            model: model.clone(),
+                            dimension: dim,
+                        })
+                        .collect();
+
+                    store.upsert_vectors(&entries).await?;
+                    Ok(())
+                }
+                .await;
+
+                pending.fetch_sub(n, Ordering::Relaxed);
+                let prev = done.fetch_add(n, Ordering::Relaxed);
+                let _ = progress_tx.send(Tier2Progress {
+                    embedded: prev + n,
+                    total,
+                });
+
+                result
             });
+        }
 
-            tokio::task::yield_now().await;
+        while let Some(res) = join_set.join_next().await {
+            res.map_err(|e| crate::CoreError::Embed(format!("task join error: {e}")))??;
         }
     }
 
@@ -317,6 +367,7 @@ pub async fn incremental_reindex(
         let path = &change.path;
 
         if change.kind == ChangeKind::Removed {
+            // FK cascade clears structural_nodes and symbol/chunk rows.
             store.delete_file(path).await?;
             changed_files.insert(path.clone());
             continue;
@@ -342,6 +393,25 @@ pub async fn incremental_reindex(
             }
         };
 
+        // Persist file metadata for either branch below.
+        store.upsert_files(&[entry.clone()]).await?;
+
+        // Structural-only languages bypass the code parser and refresh Tier 1.5 nodes.
+        let is_structural = matches!(
+            entry.language,
+            Some(Language::Markdown)
+                | Some(Language::Json)
+                | Some(Language::Yaml)
+                | Some(Language::Toml)
+                | Some(Language::Csv)
+        );
+        if is_structural {
+            if let Err(e) = reindex_structural_for_file(store, root, &entry).await {
+                tracing::warn!(file = %path, error = %e, "structural reindex failed");
+            }
+            continue;
+        }
+
         let pf = match parser.parse(&entry, &source) {
             Ok(pf) => pf,
             Err(e) => {
@@ -350,7 +420,6 @@ pub async fn incremental_reindex(
             }
         };
 
-        store.upsert_files(&[entry]).await?;
         if !pf.symbols.is_empty() {
             store.upsert_symbols(&pf.symbols).await?;
         }

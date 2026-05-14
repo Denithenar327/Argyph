@@ -1,6 +1,8 @@
 # Argyph DXT Icon
 
-Replace this placeholder PNG with a 128x128 icon for Argyph.
-The icon should be a recognizable symbol (e.g., a stylized 'A' or database-on-disk glyph).
+`icon.png` is the 128x128 RGBA icon used in the Claude Desktop extension surface.
+The current icon combines a stylized "A" glyph over a gradient circle (a nod to
+Argus, the all-seeing watcher, and Glyph — the project's name etymology).
 
-Generate with: any PNG editor, ensure 128x128 pixels.
+If you regenerate the icon, keep it 128x128, RGBA, optimized PNG, and ensure it
+remains legible at 32x32 (Claude Desktop's smallest rendering target).

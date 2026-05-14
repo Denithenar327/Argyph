@@ -2,10 +2,10 @@
 //! See spec §5 (specs/2026-05-13-precise-locate-design.md).
 
 pub mod model;
-pub mod tools;
-pub mod validate;
 pub mod prompts;
 pub mod providers;
+pub mod tools;
+pub mod validate;
 
 #[allow(clippy::module_inception)]
 mod loop_;
@@ -24,10 +24,21 @@ pub fn build_model(
     endpoint: Option<String>,
 ) -> Result<Arc<dyn LocateModel>, LocateModelError> {
     match provider {
-        "openai" => Ok(Arc::new(providers::openai::OpenAiModel::from_env(model.into(), endpoint)?)),
-        "anthropic" => Ok(Arc::new(providers::anthropic::AnthropicModel::from_env(model.into(), endpoint)?)),
-        "ollama" | "local" => Ok(Arc::new(providers::ollama::OllamaModel::new(model.into(), endpoint))),
-        other => Err(LocateModelError::Provider(format!("unknown provider `{other}`"))),
+        "openai" => Ok(Arc::new(providers::openai::OpenAiModel::from_env(
+            model.into(),
+            endpoint,
+        )?)),
+        "anthropic" => Ok(Arc::new(providers::anthropic::AnthropicModel::from_env(
+            model.into(),
+            endpoint,
+        )?)),
+        "ollama" | "local" => Ok(Arc::new(providers::ollama::OllamaModel::new(
+            model.into(),
+            endpoint,
+        ))),
+        other => Err(LocateModelError::Provider(format!(
+            "unknown provider `{other}`"
+        ))),
     }
 }
 

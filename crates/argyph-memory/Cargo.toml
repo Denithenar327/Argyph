@@ -1,0 +1,21 @@
+[package]
+name = "argyph-memory"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+thiserror.workspace = true
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+argyph-store = { path = "../argyph-store" }
+async-trait = "0.1"
+
+[lib]
+name = "argyph_memory"
+path = "src/lib.rs"

@@ -12,6 +12,7 @@ use argyph_graph::graph::SymbolOutline;
 use argyph_graph::selector::SymbolSelector;
 use argyph_pack::{self, DefaultPacker, PackContext, PackRequest, PackResult, PackScope, Packer};
 use argyph_parse::types::Symbol;
+use argyph_parse::SymbolId;
 use argyph_store::Store;
 use camino::{Utf8Path, Utf8PathBuf};
 use regex::Regex;
@@ -366,7 +367,40 @@ impl PackContext for IndexPackContext<'_> {
                     .filter(|p| requested_set.contains(p))
                     .collect()
             }
-            PackScope::Symbol(_name) => vec![],
+            PackScope::Symbol(name) => {
+                let indexed_set: std::collections::HashSet<_> = paths.iter().collect();
+                let syms = tokio::runtime::Handle::current()
+                    .block_on(self.index.find_symbol(name, None))
+                    .unwrap_or_default();
+                let mut file_set: std::collections::HashSet<Utf8PathBuf> =
+                    std::collections::HashSet::new();
+                for sym in &syms {
+                    file_set.insert(sym.file.clone());
+                    let selector = SymbolSelector::ById(sym.id.clone());
+                    if let Ok(callees) = tokio::runtime::Handle::current()
+                        .block_on(self.index.get_callees(&selector))
+                    {
+                        for edge in &callees {
+                            if let Some(f) = file_from_symbol_id(&edge.to) {
+                                file_set.insert(f);
+                            }
+                        }
+                    }
+                    if let Ok(refs) = tokio::runtime::Handle::current()
+                        .block_on(self.index.find_references(&selector))
+                    {
+                        for edge in &refs {
+                            if let Some(f) = file_from_symbol_id(&edge.from) {
+                                file_set.insert(f);
+                            }
+                        }
+                    }
+                }
+                file_set
+                    .into_iter()
+                    .filter(|p| indexed_set.contains(p))
+                    .collect()
+            }
         }
     }
 
@@ -384,8 +418,11 @@ impl PackContext for IndexPackContext<'_> {
             .map(|entry| entry.modified)
     }
 
-    fn in_edges(&self, _file: &Utf8Path) -> argyph_pack::Result<usize> {
-        Ok(0)
+    fn in_edges(&self, file: &Utf8Path) -> argyph_pack::Result<usize> {
+        tokio::runtime::Handle::current()
+            .block_on(self.index.get_imports(file))
+            .map(|edges| edges.len())
+            .map_err(|e| argyph_pack::PackError::Io(e.to_string()))
     }
 }
 
@@ -452,6 +489,13 @@ pub struct IndexStatus {
     pub protocol_version: String,
     pub file_count: u64,
     pub snapshot_at: SystemTime,
+}
+
+fn file_from_symbol_id(id: &SymbolId) -> Option<Utf8PathBuf> {
+    let s = id.as_str();
+    let (prefix, _) = s.rsplit_once("::")?;
+    let (file, _) = prefix.rsplit_once("::")?;
+    Some(Utf8PathBuf::from(file))
 }
 
 #[cfg(test)]

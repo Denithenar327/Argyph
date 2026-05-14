@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+use crate::Provider;
+
 #[derive(Clone)]
 pub struct EmbedConfig {
     pub batch_size: usize,
@@ -10,6 +12,15 @@ pub struct EmbedConfig {
     pub timeout: Duration,
     pub base_url: Option<String>,
     pub cache_dir: Option<PathBuf>,
+}
+
+impl EmbedConfig {
+    pub fn for_provider(provider: &Provider) -> Self {
+        Self {
+            concurrency: provider.default_concurrency(),
+            ..Self::default()
+        }
+    }
 }
 
 impl Default for EmbedConfig {

@@ -3,10 +3,8 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use argyph_locate::smart::{
-    run, ModelStep, SmartError, SmartRequest, SubToolCtx,
-};
 use argyph_locate::smart::providers::mock::MockModel;
+use argyph_locate::smart::{run, ModelStep, SmartError, SmartRequest, SubToolCtx};
 use std::sync::Arc;
 
 fn build_ctx() -> SubToolCtx {
@@ -21,10 +19,15 @@ fn build_ctx() -> SubToolCtx {
 
 #[tokio::test]
 async fn final_with_no_calls_returns_empty_spans() {
-    let model = Arc::new(MockModel::new(vec![
-        ModelStep::Final { selected_node_ids: vec![], reasoning_summary: "nothing matched".into() },
-    ]));
-    let req = SmartRequest { query: "x".into(), max_steps: 4, max_output_tokens: 1024 };
+    let model = Arc::new(MockModel::new(vec![ModelStep::Final {
+        selected_node_ids: vec![],
+        reasoning_summary: "nothing matched".into(),
+    }]));
+    let req = SmartRequest {
+        query: "x".into(),
+        max_steps: 4,
+        max_output_tokens: 1024,
+    };
     let resp = run(model, build_ctx(), req).await.unwrap();
     assert_eq!(resp.spans.len(), 0);
     assert_eq!(resp.steps_taken, 1);
@@ -32,13 +35,15 @@ async fn final_with_no_calls_returns_empty_spans() {
 
 #[tokio::test]
 async fn fabricated_node_ids_are_rejected() {
-    let model = Arc::new(MockModel::new(vec![
-        ModelStep::Final {
-            selected_node_ids: vec!["fake:0:0".into()],
-            reasoning_summary: "bad".into(),
-        },
-    ]));
-    let req = SmartRequest { query: "x".into(), max_steps: 4, max_output_tokens: 1024 };
+    let model = Arc::new(MockModel::new(vec![ModelStep::Final {
+        selected_node_ids: vec!["fake:0:0".into()],
+        reasoning_summary: "bad".into(),
+    }]));
+    let req = SmartRequest {
+        query: "x".into(),
+        max_steps: 4,
+        max_output_tokens: 1024,
+    };
     let err = run(model, build_ctx(), req).await.unwrap_err();
     match err {
         SmartError::FabricatedNodeIds(ids) => assert_eq!(ids, vec!["fake:0:0"]),
@@ -57,7 +62,14 @@ async fn budget_exceeded_returns_error() {
         });
     }
     let model = Arc::new(MockModel::new(script));
-    let req = SmartRequest { query: "x".into(), max_steps: 3, max_output_tokens: 1024 };
+    let req = SmartRequest {
+        query: "x".into(),
+        max_steps: 3,
+        max_output_tokens: 1024,
+    };
     let err = run(model, build_ctx(), req).await.unwrap_err();
-    assert!(matches!(err, SmartError::BudgetExceeded { steps_taken: 3, .. }));
+    assert!(matches!(
+        err,
+        SmartError::BudgetExceeded { steps_taken: 3, .. }
+    ));
 }

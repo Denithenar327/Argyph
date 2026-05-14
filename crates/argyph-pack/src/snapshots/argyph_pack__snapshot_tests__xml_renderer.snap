@@ -1,0 +1,45 @@
+---
+source: crates/argyph-pack/src/snapshot_tests.rs
+expression: result.content
+---
+<?xml version="1.0" encoding="UTF-8"?>
+<repository name="repository">
+  <file path="src/lib.rs" tokens="23" truncated="false">
+<![CDATA[pub fn add(a: i32, b: i32) -> i32 {
+    a + b
+}]]>
+  </file>
+  <file path="CONTRIBUTING.md" tokens="9" truncated="false">
+<![CDATA[## Contributing
+
+Please submit PRs.]]>
+  </file>
+  <file path="README.md" tokens="8" truncated="false">
+<![CDATA[# My Project
+
+A cool project.]]>
+  </file>
+  <file path="src/lib_test.rs" tokens="23" truncated="false">
+<![CDATA[#[test]
+fn test_add() {
+    assert_eq!(add(1, 2), 3);
+}]]>
+  </file>
+  <file path="src/models/user.rs" tokens="18" truncated="false">
+<![CDATA[pub struct User {
+    pub name: String,
+    pub age: u32,
+}]]>
+  </file>
+  <file path="src/utils.rs" tokens="21" truncated="false">
+<![CDATA[pub fn greet(name: &str) -> String {
+    format!("Hello, {name}!")
+}]]>
+  </file>
+  <file path="tests/integration.rs" tokens="14" truncated="false">
+<![CDATA[#[test]
+fn test_integration() {
+    assert!(true);
+}]]>
+  </file>
+</repository>

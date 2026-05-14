@@ -17,6 +17,7 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "004_structural_nodes",
         include_str!("migrations/004_structural_nodes.sql"),
     ),
+    ("005_memories", include_str!("migrations/005_memories.sql")),
 ];
 
 /// Run all pending migrations on `conn`. Idempotent — safe to call on every
@@ -75,6 +76,6 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(version, 4);
+        assert_eq!(version, 5);
     }
 }

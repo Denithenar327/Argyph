@@ -122,7 +122,7 @@ fn mcp_initialize_and_list_tools() {
     let tools = list_resp["result"]["tools"]
         .as_array()
         .expect("tools missing");
-    assert_eq!(tools.len(), 13, "expected 13 tools, got {tools:?}");
+    assert_eq!(tools.len(), 17, "expected 17 tools, got {tools:?}");
     let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
     assert!(names.contains(&"get_index_status"));
     assert!(names.contains(&"get_repo_overview"));
@@ -136,6 +136,11 @@ fn mcp_initialize_and_list_tools() {
     assert!(names.contains(&"get_symbol_outline"));
     assert!(names.contains(&"pack_repo"));
     assert!(names.contains(&"locate"));
+    assert!(names.contains(&"locate_smart"));
+    assert!(names.contains(&"memory_save"));
+    assert!(names.contains(&"memory_search"));
+    assert!(names.contains(&"memory_list"));
+    assert!(names.contains(&"memory_forget"));
 }
 
 #[test]
@@ -189,6 +194,14 @@ fn call_get_index_status_returns_tier_info() {
     assert!(
         body["tiers"]["symbols"].is_object(),
         "expected symbols tier info: {body}"
+    );
+    assert!(
+        body["tiers"]["structural"].is_object(),
+        "expected Tier 1.5 structural tier info: {body}"
+    );
+    assert!(
+        body["tiers"]["structural"]["count"].is_u64(),
+        "expected Tier 1.5 structural count to be reported: {body}"
     );
 }
 

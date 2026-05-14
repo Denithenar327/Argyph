@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
+# Universal installer for Argyph. Downloads the cargo-dist archive
+# matching the current host, verifies the SHA256 sidecar, and installs
+# the binary into $ARGYPH_INSTALL_DIR (default: $HOME/.local/bin).
 set -euo pipefail
 
 REPO="Ezzy1630/argyph"
 VERSION="${ARGYPH_VERSION:-latest}"
 INSTALL_DIR="${ARGYPH_INSTALL_DIR:-$HOME/.local/bin}"
 
-detect_platform() {
+detect_target() {
     local os arch
     case "$(uname -s)" in
         Darwin) os="apple-darwin" ;;
@@ -14,63 +17,89 @@ detect_platform() {
     esac
     case "$(uname -m)" in
         arm64|aarch64) arch="aarch64" ;;
-        x86_64)        arch="x86_64" ;;
+        x86_64|amd64)  arch="x86_64" ;;
         *)             echo "Unsupported arch: $(uname -m)" >&2; exit 1 ;;
     esac
     echo "${arch}-${os}"
 }
 
-PLATFORM=$(detect_platform)
+TARGET=$(detect_target)
 BINARY_NAME="argyph"
 
-if [[ "$PLATFORM" == *"pc-windows"* ]]; then
-    BINARY_NAME="argyph.exe"
-fi
-
-echo "Installing argyph ${VERSION} for ${PLATFORM}..."
-
 if [ "$VERSION" = "latest" ]; then
-    VERSION=$(curl -s https://api.github.com/repos/${REPO}/releases/latest | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
+    VERSION=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
+              | grep '"tag_name"' \
+              | sed -E 's/.*"([^"]+)".*/\1/' || true)
     if [ -z "$VERSION" ]; then
         echo "Failed to determine latest version" >&2
         exit 1
     fi
 fi
 
-DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/argyph-${PLATFORM}.tar.gz"
-BINARY_URL="https://github.com/${REPO}/releases/download/${VERSION}/${BINARY_NAME}"
+# cargo-dist (current) produces archives named:
+#   argyph-<target>.tar.xz   (unix)
+#   argyph-<target>.zip      (windows; not reached by this script)
+# It also publishes a sibling .sha256 file with the SHA-256 of the archive.
+ARCHIVE="argyph-${TARGET}.tar.xz"
+BASE="https://github.com/${REPO}/releases/download/${VERSION}"
+ARCHIVE_URL="${BASE}/${ARCHIVE}"
+SHA_URL="${ARCHIVE_URL}.sha256"
+
+echo "Installing argyph ${VERSION} for ${TARGET}..."
+
+if ! command -v curl >/dev/null 2>&1; then
+    echo "curl is required" >&2
+    exit 1
+fi
+if ! command -v tar >/dev/null 2>&1; then
+    echo "tar is required" >&2
+    exit 1
+fi
 
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT
-
-echo "Downloading argyph ${VERSION}..."
 cd "$TMP_DIR"
 
-if command -v curl >/dev/null 2>&1; then
-    curl -fsSL "$DOWNLOAD_URL" -o argyph.tar.gz 2>/dev/null || {
-        echo "Downloading binary directly..."
-        curl -fsSL "$BINARY_URL" -o "$BINARY_NAME"
-    }
-elif command -v wget >/dev/null 2>&1; then
-    wget -q "$DOWNLOAD_URL" -O argyph.tar.gz 2>/dev/null || {
-        echo "Downloading binary directly..."
-        wget -q "$BINARY_URL" -O "$BINARY_NAME"
-    }
+echo "Downloading ${ARCHIVE_URL}..."
+if ! curl -fsSL "$ARCHIVE_URL" -o "$ARCHIVE"; then
+    echo "Failed to download $ARCHIVE_URL" >&2
+    echo "Falling back to: cargo install argyph --locked" >&2
+    exit 1
 fi
 
-if [ -f argyph.tar.gz ]; then
-    tar xzf argyph.tar.gz
+echo "Verifying SHA256..."
+EXPECTED_SHA=$(curl -fsSL "$SHA_URL" 2>/dev/null | cut -d' ' -f1 || true)
+if [ -n "$EXPECTED_SHA" ]; then
+    if command -v sha256sum >/dev/null 2>&1; then
+        ACTUAL_SHA=$(sha256sum "$ARCHIVE" | cut -d' ' -f1)
+    else
+        ACTUAL_SHA=$(shasum -a 256 "$ARCHIVE" | cut -d' ' -f1)
+    fi
+    if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
+        echo "SHA256 mismatch: expected $EXPECTED_SHA got $ACTUAL_SHA" >&2
+        exit 1
+    fi
+    echo "  ok"
+else
+    echo "Warning: no .sha256 sidecar found at $SHA_URL — skipping verification" >&2
+fi
+
+tar -xf "$ARCHIVE"
+
+# Locate the binary inside the extracted tree.
+EXTRACTED_BIN=$(find . -type f -name "$BINARY_NAME" -perm -u+x | head -n 1 || true)
+if [ -z "$EXTRACTED_BIN" ]; then
+    EXTRACTED_BIN=$(find . -type f -name "$BINARY_NAME" | head -n 1 || true)
+fi
+if [ -z "$EXTRACTED_BIN" ]; then
+    echo "Archive did not contain a '$BINARY_NAME' binary" >&2
+    ls -la
+    exit 1
 fi
 
 mkdir -p "$INSTALL_DIR"
-if [ -f "$BINARY_NAME" ]; then
-    cp "$BINARY_NAME" "$INSTALL_DIR/"
-    chmod +x "$INSTALL_DIR/$BINARY_NAME"
-else
-    echo "Downloaded archive did not contain argyph binary" >&2
-    ls -la "$TMP_DIR" >&2
-    exit 1
-fi
+cp "$EXTRACTED_BIN" "$INSTALL_DIR/$BINARY_NAME"
+chmod +x "$INSTALL_DIR/$BINARY_NAME"
 
 echo ""
 echo "argyph ${VERSION} installed to ${INSTALL_DIR}/${BINARY_NAME}"

@@ -34,6 +34,10 @@ Most existing context servers depend on a cloud vector database (Milvus, Pinecon
 
 ## Install
 
+> The first tagged release is `v1.0.0-rc.1`. If you don't see a published
+> package on a given channel yet, use the **Build from source** path below —
+> it works on any platform with a current Rust toolchain.
+
 ### Claude Code
 
 ```bash
@@ -46,10 +50,39 @@ claude mcp add argyph -- npx @argyph/server@latest
 npx @argyph/server
 ```
 
-### Cargo
+### Homebrew (macOS / Linux)
 
 ```bash
-cargo install argyph
+brew install Ezzy1630/argyph/argyph
+```
+
+### Universal installer
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Ezzy1630/argyph/main/scripts/install.sh | bash
+```
+
+### Cargo
+
+`cargo install argyph` builds Argyph from source. The bundled local
+embedder uses [`ort`](https://crates.io/crates/ort) (ONNX Runtime); on
+most platforms `ort` ships a prebuilt dynamic library and there is
+nothing to do. On Linux you may need `libssl-dev` and a working C
+toolchain; on Windows the MSVC build tools are required. If the build
+fails on `ort-sys` linkage, set `ORT_STRATEGY=download` before
+re-running.
+
+```bash
+cargo install argyph --locked
+```
+
+### Build from source
+
+```bash
+git clone https://github.com/Ezzy1630/argyph.git
+cd argyph
+cargo build --release
+./target/release/argyph serve
 ```
 
 ### Claude Desktop (DXT)
@@ -110,6 +143,10 @@ After the first index, the on-disk `.argyph/` directory persists and only change
 | `read_file_range`     | Bounded file read by symbol range                        | 0             |
 | `locate`              | Smallest natural span containing the target              | 1.5           |
 | `locate_smart`        | Retrieval subagent (opt-in; needs provider config)     | 1.5           |
+| `memory_save`         | Persist a memory entry under a scope                     | 0             |
+| `memory_search`       | FTS5 search over persistent memories                     | 0             |
+| `memory_list`         | List memories in a scope                                 | 0             |
+| `memory_forget`       | Delete a memory entry by id                              | 0             |
 | `reindex`             | Force a full or partial reindex                          | —             |
 
 Full schema reference: [docs/tools-reference.md](docs/tools-reference.md).

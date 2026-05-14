@@ -32,6 +32,18 @@ pub enum Provider {
     Voyage,
 }
 
+impl Provider {
+    pub fn default_concurrency(&self) -> usize {
+        match self {
+            Provider::Local => std::thread::available_parallelism()
+                .map(|n| n.get())
+                .unwrap_or(4),
+            Provider::OpenAi => 8,
+            Provider::Voyage => 4,
+        }
+    }
+}
+
 pub fn build(provider: Provider, config: config::EmbedConfig) -> Result<Arc<dyn Embedder>> {
     match provider {
         Provider::Local => {

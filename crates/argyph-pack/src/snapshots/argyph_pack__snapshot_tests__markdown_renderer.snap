@@ -1,0 +1,64 @@
+---
+source: crates/argyph-pack/src/snapshot_tests.rs
+expression: result.content
+---
+# Repository: repository
+
+## File: src/lib.rs (tokens: 23, truncated: false)
+
+```rust
+pub fn add(a: i32, b: i32) -> i32 {
+    a + b
+}
+```
+
+## File: CONTRIBUTING.md (tokens: 9, truncated: false)
+
+```markdown
+## Contributing
+
+Please submit PRs.
+```
+
+## File: README.md (tokens: 8, truncated: false)
+
+```markdown
+# My Project
+
+A cool project.
+```
+
+## File: src/lib_test.rs (tokens: 23, truncated: false)
+
+```rust
+#[test]
+fn test_add() {
+    assert_eq!(add(1, 2), 3);
+}
+```
+
+## File: src/models/user.rs (tokens: 18, truncated: false)
+
+```rust
+pub struct User {
+    pub name: String,
+    pub age: u32,
+}
+```
+
+## File: src/utils.rs (tokens: 21, truncated: false)
+
+```rust
+pub fn greet(name: &str) -> String {
+    format!("Hello, {name}!")
+}
+```
+
+## File: tests/integration.rs (tokens: 14, truncated: false)
+
+```rust
+#[test]
+fn test_integration() {
+    assert!(true);
+}
+```
