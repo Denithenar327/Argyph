@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use argyph_parse::{Import, ParsedFile, Symbol, SymbolKind};
 use camino::Utf8PathBuf;
@@ -90,6 +90,55 @@ fn resolver_for(file_path: &Utf8PathBuf) -> Option<Box<dyn ImportResolver>> {
     }
 }
 
+/// All distinct identifier words in a span of text, plus the subset of
+/// those words that appear immediately followed by `(` (a call site).
+struct WordIndex {
+    mentioned: HashSet<String>,
+    called: HashSet<String>,
+}
+
+/// Tokenize `text` once into its identifier words. An identifier is the
+/// usual `[A-Za-z_][A-Za-z0-9_]*`. A word is recorded as "called" when
+/// the character immediately after it is `(`, matching the previous
+/// `name(` substring heuristic.
+fn index_words(text: &str) -> WordIndex {
+    let mut mentioned = HashSet::new();
+    let mut called = HashSet::new();
+    let bytes = text.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        let b = bytes[i];
+        let is_ident_start = b == b'_' || b.is_ascii_alphabetic();
+        if !is_ident_start {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        while i < bytes.len() {
+            let c = bytes[i];
+            if c == b'_' || c.is_ascii_alphanumeric() {
+                i += 1;
+            } else {
+                break;
+            }
+        }
+        // `start..i` is ASCII-only by construction, so slicing is safe.
+        let word = &text[start..i];
+        if bytes.get(i) == Some(&b'(') {
+            called.insert(word.to_string());
+        }
+        mentioned.insert(word.to_string());
+    }
+    WordIndex { mentioned, called }
+}
+
+/// Resolve within-file references and calls.
+///
+/// Previously this scanned every symbol's chunk text for every other
+/// symbol's name (`O(symbols² × text-length)`), which did not scale to
+/// symbol-dense files. Now each symbol's owning chunks are tokenized
+/// once into a `WordIndex`, and every cross-symbol check is an O(1)
+/// hash-set membership test.
 fn build_within_file_references(
     symbols: &[&Symbol],
     chunks: &[argyph_parse::Chunk],
@@ -101,21 +150,25 @@ fn build_within_file_references(
             continue;
         }
 
-        let owning_chunks: Vec<&argyph_parse::Chunk> = chunks
-            .iter()
-            .filter(|c| range_overlap(&sym.range, &c.range))
-            .collect();
+        // Tokenize this symbol's owning chunks exactly once.
+        let mut index = WordIndex {
+            mentioned: HashSet::new(),
+            called: HashSet::new(),
+        };
+        for chunk in chunks {
+            if range_overlap(&sym.range, &chunk.range) {
+                let wi = index_words(&chunk.text);
+                index.mentioned.extend(wi.mentioned);
+                index.called.extend(wi.called);
+            }
+        }
 
         for other in all_file_symbols {
             if other.id == sym.id {
                 continue;
             }
 
-            let mention_found = owning_chunks
-                .iter()
-                .any(|c| is_word_in_text(&c.text, &other.name));
-
-            if mention_found {
+            if index.mentioned.contains(other.name.as_str()) {
                 edges.push(Edge {
                     from: sym.id.clone(),
                     to: other.id.clone(),
@@ -125,19 +178,13 @@ fn build_within_file_references(
             }
 
             let is_callable = matches!(other.kind, SymbolKind::Function | SymbolKind::Method);
-            if is_callable {
-                let call_found = owning_chunks
-                    .iter()
-                    .any(|c| is_call_in_text(&c.text, &other.name));
-
-                if call_found {
-                    edges.push(Edge {
-                        from: sym.id.clone(),
-                        to: other.id.clone(),
-                        kind: EdgeKind::Calls,
-                        confidence: Confidence::Heuristic,
-                    });
-                }
+            if is_callable && index.called.contains(other.name.as_str()) {
+                edges.push(Edge {
+                    from: sym.id.clone(),
+                    to: other.id.clone(),
+                    kind: EdgeKind::Calls,
+                    confidence: Confidence::Heuristic,
+                });
             }
         }
     }
@@ -200,31 +247,6 @@ fn range_overlap(a: &argyph_parse::ByteRange, b: &argyph_parse::ByteRange) -> bo
     a.start < b.end && b.start < a.end
 }
 
-fn is_word_in_text(text: &str, word: &str) -> bool {
-    if word.len() > text.len() {
-        return false;
-    }
-    for (idx, _) in text.match_indices(word) {
-        let before = text[..idx]
-            .chars()
-            .last()
-            .is_none_or(|c| !c.is_alphanumeric() && c != '_');
-        let after = text[idx + word.len()..]
-            .chars()
-            .next()
-            .is_none_or(|c| !c.is_alphanumeric() && c != '_');
-        if before && after {
-            return true;
-        }
-    }
-    false
-}
-
-fn is_call_in_text(text: &str, name: &str) -> bool {
-    let pattern = format!("{name}(");
-    text.contains(&pattern)
-}
-
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
@@ -279,20 +301,36 @@ mod tests {
     }
 
     #[test]
-    fn word_boundary_matches_identifiers() {
-        assert!(is_word_in_text("let x = foo + 1", "foo"));
-        assert!(!is_word_in_text("let x = foobar + 1", "foo"));
-        assert!(is_word_in_text("foo()", "foo"));
-        assert!(!is_word_in_text("snafoo()", "foo"));
-        assert!(is_word_in_text("  foo  ", "foo"));
+    fn word_index_matches_whole_identifiers() {
+        let wi = index_words("let x = foo + 1");
+        assert!(wi.mentioned.contains("foo"));
+
+        let wi = index_words("let x = foobar + 1");
+        // `foobar` is one word; `foo` must not be reported.
+        assert!(!wi.mentioned.contains("foo"));
+        assert!(wi.mentioned.contains("foobar"));
+
+        let wi = index_words("snafoo()");
+        assert!(!wi.mentioned.contains("foo"));
+        assert!(wi.mentioned.contains("snafoo"));
     }
 
     #[test]
-    fn call_detection() {
-        assert!(is_call_in_text("void foo(a, b)", "foo"));
-        assert!(is_call_in_text("let x = foo(1, 2)", "foo"));
-        assert!(!is_call_in_text("let x = foo", "foo"));
-        assert!(!is_call_in_text("foo_bar()", "foo"));
+    fn word_index_detects_calls() {
+        let wi = index_words("void foo(a, b)");
+        assert!(wi.called.contains("foo"));
+
+        let wi = index_words("let x = foo(1, 2)");
+        assert!(wi.called.contains("foo"));
+
+        let wi = index_words("let x = foo");
+        assert!(wi.mentioned.contains("foo"));
+        assert!(!wi.called.contains("foo"));
+
+        // `foo_bar()` is a call to `foo_bar`, not `foo`.
+        let wi = index_words("foo_bar()");
+        assert!(wi.called.contains("foo_bar"));
+        assert!(!wi.called.contains("foo"));
     }
 
     #[test]
