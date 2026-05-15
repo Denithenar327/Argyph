@@ -13,3 +13,7 @@ targets = [
 ]
 dist = true
 installers = ["shell", "powershell"]
+# We hand-maintain .github/workflows/release.yml so we can wire up
+# crates.io / npm / Homebrew publishing in the same workflow.
+# Tell cargo-dist not to enforce its generated CI template.
+allow-dirty = ["ci"]
