@@ -112,6 +112,15 @@ pub async fn run_tier1(root: &Utf8Path, store: &dyn Store) -> Result<u64> {
     let mut parsed: Vec<(Utf8PathBuf, argyph_parse::ParsedFile)> = Vec::with_capacity(files.len());
     let mut total_symbols: u64 = 0;
 
+    // Symbol/chunk rows are flushed in large batches rather than one
+    // transaction per file. On a big repo, per-file commits dominated
+    // Tier 1 wall-clock — 79K files meant ~158K transaction commits,
+    // each forcing a WAL write. Batching collapses that to a few
+    // hundred commits.
+    const FLUSH_BATCH: usize = 4000;
+    let mut sym_batch: Vec<argyph_parse::Symbol> = Vec::new();
+    let mut chunk_batch: Vec<argyph_parse::Chunk> = Vec::new();
+
     for entry in &files {
         let path = root.join(entry.path.as_str());
         let source = match std::fs::read_to_string(path.as_str()) {
@@ -125,13 +134,24 @@ pub async fn run_tier1(root: &Utf8Path, store: &dyn Store) -> Result<u64> {
         let pf = parser.parse(entry, &source)?;
         total_symbols += pf.symbols.len() as u64;
 
-        if !pf.symbols.is_empty() {
-            store.upsert_symbols(&pf.symbols).await?;
+        sym_batch.extend(pf.symbols.iter().cloned());
+        chunk_batch.extend(pf.chunks.iter().cloned());
+        if sym_batch.len() >= FLUSH_BATCH {
+            store.upsert_symbols(&sym_batch).await?;
+            sym_batch.clear();
         }
-        if !pf.chunks.is_empty() {
-            store.upsert_chunks(&pf.chunks).await?;
+        if chunk_batch.len() >= FLUSH_BATCH {
+            store.upsert_chunks(&chunk_batch).await?;
+            chunk_batch.clear();
         }
         parsed.push((entry.path.clone(), pf));
+    }
+
+    if !sym_batch.is_empty() {
+        store.upsert_symbols(&sym_batch).await?;
+    }
+    if !chunk_batch.is_empty() {
+        store.upsert_chunks(&chunk_batch).await?;
     }
 
     tracing::info!(
