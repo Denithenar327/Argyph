@@ -235,14 +235,25 @@ jobs:
         run: |
           chmod +x scripts/update-homebrew.sh
           ./scripts/update-homebrew.sh "$REF_NAME"
-      - name: Commit formula
+      - name: Open PR with refreshed formula
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REF_NAME: ${{ github.ref_name }}
         run: |
+          if git diff --quiet Formula/argyph.rb; then
+            echo "Formula already up to date — nothing to do."
+            exit 0
+          fi
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
-          if ! git diff --quiet Formula/argyph.rb; then
-            git add Formula/argyph.rb
-            git commit -m "chore(homebrew): update SHAs for ${REF_NAME}"
-            git push origin HEAD:main
-          fi
+          BRANCH="homebrew/${REF_NAME}"
+          git checkout -b "$BRANCH"
+          git add Formula/argyph.rb
+          git commit -m "chore(homebrew): update SHAs for ${REF_NAME}"
+          git push origin "$BRANCH" --force
+          # main is a protected branch, so propose the change via PR
+          # rather than pushing directly.
+          gh pr create --base main --head "$BRANCH" \
+            --title "chore(homebrew): update SHAs for ${REF_NAME}" \
+            --body "Automated Homebrew formula SHA refresh for ${REF_NAME}." \
+            || echo "PR already exists."
