@@ -18,9 +18,11 @@ jobs:
           - target: aarch64-apple-darwin
             os: macos-latest
             archive_ext: tar.xz
-          - target: x86_64-apple-darwin
-            os: macos-latest
-            archive_ext: tar.xz
+          # x86_64-apple-darwin: ort (ONNX Runtime) does not ship a
+          # prebuilt binary for Intel Mac. Intel Mac users build from
+          # source via `cargo install argyph`. We can re-enable this
+          # target later by switching to the pure-Rust ort-tract
+          # backend or compiling ONNX from source.
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             archive_ext: tar.xz
@@ -48,9 +50,12 @@ jobs:
         if: matrix.target == 'aarch64-unknown-linux-gnu'
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu
+          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
           mkdir -p .cargo
           printf '[target.aarch64-unknown-linux-gnu]\nlinker = "%s"\n' "${{ matrix.linker }}" > .cargo/config.toml
+          echo "CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc" >> "$GITHUB_ENV"
+          echo "CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++" >> "$GITHUB_ENV"
+          echo "AR_aarch64_unknown_linux_gnu=aarch64-linux-gnu-ar" >> "$GITHUB_ENV"
 
       - name: Force dynamic CRT (windows)
         if: matrix.os == 'windows-latest'

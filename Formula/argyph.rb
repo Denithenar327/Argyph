@@ -11,10 +11,9 @@ class Argyph < Formula
       url "https://github.com/Ezzy1630/argyph/releases/download/v1.0.0-rc.2/argyph-aarch64-apple-darwin.tar.xz"
       sha256 "REPLACE_WITH_AARCH64_DARWIN_SHA256"
     end
-    on_intel do
-      url "https://github.com/Ezzy1630/argyph/releases/download/v1.0.0-rc.2/argyph-x86_64-apple-darwin.tar.xz"
-      sha256 "REPLACE_WITH_X86_64_DARWIN_SHA256"
-    end
+    # Intel Mac: no prebuilt available (ort/ONNX Runtime does not ship
+    # an x86_64-apple-darwin binary). Fall back to building from source
+    # via cargo. Homebrew will install rust as a build-time dependency.
   end
 
   on_linux do
@@ -29,6 +28,15 @@ class Argyph < Formula
   end
 
   def install
+    if OS.mac? && Hardware::CPU.intel?
+      odie <<~EOS
+        Argyph does not ship a prebuilt binary for Intel macOS because the
+        bundled ONNX Runtime backend has no x86_64-apple-darwin binary.
+        Install via cargo instead:
+
+            cargo install argyph --locked
+      EOS
+    end
     bin.install "argyph"
   end
 

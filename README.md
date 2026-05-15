@@ -63,6 +63,11 @@ brew install Ezzy1630/argyph/argyph
 curl -fsSL https://raw.githubusercontent.com/Ezzy1630/argyph/main/scripts/install.sh | bash
 ```
 
+> **Intel Mac (`x86_64-apple-darwin`) users:** the ONNX Runtime backend
+> doesn't ship a prebuilt for Intel macOS, so no prebuilt binary is
+> produced for that target. Use the **Cargo** path below — it builds
+> in a couple of minutes and works fine on Intel Macs.
+
 ### Cargo
 
 `cargo install argyph` builds Argyph from source. The bundled local

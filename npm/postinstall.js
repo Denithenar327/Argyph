@@ -18,7 +18,14 @@ function getPlatform() {
     const arch = process.arch;
 
     if (platform === 'darwin' && arch === 'arm64') return 'aarch64-apple-darwin';
-    if (platform === 'darwin' && arch === 'x64') return 'x86_64-apple-darwin';
+    if (platform === 'darwin' && arch === 'x64') {
+        // ort (ONNX Runtime) does not ship a prebuilt binary for Intel
+        // macOS. Direct users to `cargo install argyph`.
+        throw new Error(
+            'No prebuilt binary is available for Intel macOS (x86_64-apple-darwin). ' +
+            'Install with: cargo install argyph --locked'
+        );
+    }
     if (platform === 'linux' && arch === 'x64') return 'x86_64-unknown-linux-gnu';
     if (platform === 'linux' && arch === 'arm64') return 'aarch64-unknown-linux-gnu';
     if (platform === 'win32' && arch === 'x64') return 'x86_64-pc-windows-msvc';

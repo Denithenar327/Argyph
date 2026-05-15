@@ -25,10 +25,11 @@ fi
 STRIP_V="${VERSION#v}"
 TARGETS=(
     "aarch64-apple-darwin:AARCH64_DARWIN"
-    "x86_64-apple-darwin:X86_64_DARWIN"
     "aarch64-unknown-linux-gnu:AARCH64_LINUX"
     "x86_64-unknown-linux-gnu:X86_64_LINUX"
 )
+# Intel macOS (x86_64-apple-darwin) is intentionally absent —
+# Homebrew falls back to `cargo install` on that target (see Formula).
 
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT
