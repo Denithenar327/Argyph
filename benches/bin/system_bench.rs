@@ -41,8 +41,13 @@ async fn main() {
 
     println!("tier0_or_better_ready: {tier0_ready:?}  (state={initial})");
 
-    // Poll for tier 1, with a generous cap.
-    let t1_deadline = Instant::now() + std::time::Duration::from_secs(120);
+    // Poll for tier readiness. Cap is overridable via ARGYPH_BENCH_CAP_SECS
+    // so large repos can run to completion.
+    let cap_secs: u64 = std::env::var("ARGYPH_BENCH_CAP_SECS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(120);
+    let t1_deadline = Instant::now() + std::time::Duration::from_secs(cap_secs);
     let mut tier1_at = None;
     let mut tier2_at = None;
     let mut last_state = String::new();

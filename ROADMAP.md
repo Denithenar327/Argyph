@@ -55,14 +55,20 @@ hardware and benchmarks are published in
 
 ---
 
-## Now (v1.0 GA hardening)
+## Now (v1.1 — performance)
 
+- [ ] **Tier 1 edge-builder performance.** `argyph-graph::builder`
+      resolves within-file references with an O(symbols²) per-file
+      scan. On repositories with very high symbol density (e.g. the
+      full 81K-file TypeScript repo) edge-building does not complete
+      in a practical window. Replace the nested scan with a
+      name-indexed single pass so Tier 1 scales linearly. See
+      `docs/benchmarks.md` § 5.
 - [ ] Publish reproducible benchmarks against `claude-context`, `repomix`,
       and `Serena` in `docs/benchmarks.md`.
-- [ ] Performance pass: verify Tier 0 cold start <1 s, semantic p50
-      <100 ms, structural-path p99 <5 ms on the reference 1M-LOC fixture.
-- [ ] Cross-platform install QA: macOS arm64/x64, Linux x64/arm64,
+- [ ] Cross-platform install QA: macOS arm64, Linux x64/arm64,
       Windows x64 — npm, cargo install, Homebrew, DXT, install.sh.
+      (Intel macOS is source-install only — see README.)
 
 ---
 

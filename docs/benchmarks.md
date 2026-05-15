@@ -66,31 +66,54 @@ below with a reproducible row.
 
 ## 4. Internal microbenches (current)
 
-Measured on `m3-pro`. Run with the `argyph-benches` crate (criterion).
+Measured on an Apple M-series laptop. Run with the `argyph-benches`
+crate (criterion): `cargo bench --workspace`.
 
-| Bench                         | Time     | Notes                                |
-|-------------------------------|----------|--------------------------------------|
-| Tree-sitter parse, `main.rs`  | < 5 ms   | tiny-rust-app fixture                |
-| Directory walk                | < 1 ms   | warm cache, walkdir                  |
-| Token count (cl100k_base)     | < 50 µs  | tiktoken-rs                          |
-| `locate` parse_path           | < 1 µs   | criterion                            |
-| `locate` strategy dispatch    | < 1 µs   | criterion                            |
+| Bench                         | Time      | Notes                               |
+|-------------------------------|-----------|-------------------------------------|
+| Directory walk (this repo)    | ~244 ms   | walkdir, cold-ish cache             |
+| Token count (cl100k_base)     | ~4.4 µs   | tiktoken-rs, one source file        |
+| `locate` parse_path (bare)    | ~15 ns    | criterion                           |
+| `locate` parse_path (heading) | ~18 ns    | criterion                           |
+| `locate` strategy dispatch    | ~19–32 ns | criterion, path-only vs scoped      |
 
 These are sanity checks, not end-to-end claims.
 
 ---
 
-## 5. End-to-end results (PENDING)
+## 5. End-to-end results
 
-These rows are intentionally **blank** until the competitor harness lands
-and runs against a fixed 1M-LOC fixture. Filling them is gating the
-`v1.0.0` final release per `docs/SPEC.md` § 7.
+Measured on an Apple M-series laptop, macOS 15, with the
+`system_bench` harness:
 
-| Repo                         | Hardware | Tier 0 cold | Tier 1 full | Sym query p99 | Semantic p50 | `locate` p99 |
-|------------------------------|----------|-------------|-------------|---------------|---------------|---------------|
-| `react`                       | TBD      | —           | —           | —             | —             | —             |
-| `tensorflow/tensorflow`       | TBD      | —           | —           | —             | —             | —             |
-| `rust-lang/rust` (subset)    | TBD      | —           | —           | —             | —             | —             |
+```bash
+cargo run --release -p argyph-benches --bin system_bench -- /path/to/repo
+# large repos: raise the poll cap
+ARGYPH_BENCH_CAP_SECS=900 cargo run --release -p argyph-benches \
+  --bin system_bench -- /path/to/repo
+```
+
+| Repo / fixture                          | Files  | LOC    | Tier 0 cold | Tier 1 full | Tier 1.5 |
+|-----------------------------------------|-------:|-------:|------------:|------------:|---------:|
+| `BurntSushi/ripgrep`                    |    215 |   ~52K |       71 ms |       6.5 s |   ~0.3 s |
+| `microsoft/TypeScript` (`src/` only)    |    709 |  ~452K |       30 ms |      34.6 s |   ~0.3 s |
+| `microsoft/TypeScript` (whole repo)     | 81,310 |    ~2M |        2.1 s | > 15 min ⚠️ |        — |
+
+**Tier 0 scales linearly and stays fast** — 81K files indexed in 2.1 s.
+It is the gate that matters for "useful immediately," and it is met
+comfortably.
+
+**Tier 1 has a known scaling limit.** Within-file reference resolution
+in `argyph-graph::builder` is O(symbols²) per file, so wall-clock grows
+super-linearly with symbol density. On the 452K-LOC TypeScript compiler
+source Tier 1 completes in ~35 s; on the full 81K-file TypeScript repo
+(dominated by ~60K tiny single-symbol test fixtures) edge-building does
+not complete within a 15-minute window. The server stays fully usable
+throughout — Tier 0, `search_text`, and `pack_repo` are available the
+whole time, and tools requiring Tier 1 return `INDEX_NOT_READY` with a
+`retry_after_ms` hint rather than blocking. Optimizing the
+edge-builder to a name-indexed pass is tracked in `ROADMAP.md` under
+"Now (v1.1)".
 
 ---
 

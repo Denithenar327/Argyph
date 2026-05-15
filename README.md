@@ -242,26 +242,30 @@ Reproducible numbers, methodology in [`docs/benchmarks.md`](docs/benchmarks.md).
 
 ### System-level
 
-Measured on Apple M-series, macOS 15, against
-[`BurntSushi/ripgrep`](https://github.com/BurntSushi/ripgrep) (215
-indexed files, ~52K LOC across Rust + ancillary files). Reproduce via:
+End-to-end timings on an Apple M-series laptop, macOS 15. Reproduce via:
 
 ```bash
 cargo run --release -p argyph-benches --bin system_bench -- /path/to/repo
 ```
 
-| Workload                                  | Measured       | v1.0 acceptance gate |
-|-------------------------------------------|---------------:|---------------------:|
-| Tier 0 cold-walk (215 files)              | **71 ms**      | < 1 s                |
-| Tier 1 cold (3,820 symbols, 1.2 M edges)  | **6.5 s**      | < 30 s @ 1M LOC      |
-| Tier 1.5 structural (markdown / json / …) | **~0.3 s**     | seconds              |
-| Tier 2 embedding (chunks ≤ Tier 1)        | **~15 ms**     | minutes @ 1M LOC     |
+| Fixture                              | Files  | LOC    | Tier 0 cold | Tier 1 full |
+|--------------------------------------|-------:|-------:|------------:|------------:|
+| `BurntSushi/ripgrep`                 |    215 |   ~52K |    **71 ms**|   **6.5 s** |
+| `microsoft/TypeScript` (`src/`)      |    709 |  ~452K |    **30 ms**|  **34.6 s** |
+| `microsoft/TypeScript` (whole repo)  | 81,310 |    ~2M |   **2.1 s** | see note ↓  |
 
-For reference-hardware numbers against the 1M-LOC `microsoft/vscode`
-fixture and apples-to-apples comparisons against `claude-context`,
-`repomix`, and `Serena`, see
-[`docs/benchmarks.md`](docs/benchmarks.md). Those rows are populated at
-each tagged release.
+**Tier 0 — the "useful immediately" gate — scales linearly and fast**
+(81K files in 2.1 s). `search_text` and `pack_repo` are available the
+moment Tier 0 is ready.
+
+**Tier 1 (the symbol graph) has a known scaling limit:** within-file
+reference resolution is currently O(symbols²) per file, so on very
+large repositories edge-building is slow (it does not finish within 15
+min on the full 81K-file TypeScript repo). The server never blocks —
+Tier-1 tools return `INDEX_NOT_READY` with a retry hint until the graph
+is ready. Optimizing the edge-builder is the top item in
+[ROADMAP.md](ROADMAP.md). Full methodology and competitor comparisons:
+[`docs/benchmarks.md`](docs/benchmarks.md).
 
 ---
 
