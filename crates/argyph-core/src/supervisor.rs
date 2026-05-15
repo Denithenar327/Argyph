@@ -338,18 +338,27 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn boot_reaches_tier0_in_under_1_second() {
+    async fn boot_reaches_tier0_without_blocking() {
+        // This is a *hang guard*, not a performance gate. Boot must
+        // return and have Tier 0 ready; it must not block on the
+        // background tiers. The actual sub-second cold-start figure is
+        // a published benchmark (see docs/benchmarks.md / system_bench)
+        // — asserting a hard wall-clock bound here flakes on loaded CI
+        // runners and tells us nothing a benchmark doesn't.
         let fixture = temp_fixture();
         let root = fixture.root;
         let config = Config::default();
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(1);
+        let started = std::time::Instant::now();
 
         let sup = Supervisor::boot(root, config).await.unwrap();
 
-        let elapsed = deadline.elapsed();
+        // A generous bound: only a genuine hang (deadlocked boot, a
+        // blocking call on the hot path) trips this.
         assert!(
-            elapsed < Duration::from_secs(1),
-            "boot took {elapsed:?}, expected <1s"
+            started.elapsed() < Duration::from_secs(30),
+            "boot took {:?} — far beyond the expected sub-second cold \
+             start; this indicates a blocking call on the boot path",
+            started.elapsed()
         );
 
         let state = sup.get_tier_state().await;
