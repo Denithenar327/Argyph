@@ -8,6 +8,29 @@ Entries marked **breaking** require a major version bump.
 
 ---
 
+## [1.0.1] — 2026-05-15
+
+### Performance
+
+- Tier 1 within-file reference resolver rewritten from an
+  `O(symbols² × text-length)` substring scan to one-pass hash-indexed
+  word lookups — 4.2× faster on symbol-dense code (TypeScript compiler
+  source: 34.6 s → 8.2 s).
+- Tier 1 parse loop now batches symbol/chunk SQL writes (4,000-row
+  flushes) instead of one transaction per file, collapsing ~158K
+  transaction commits to a few hundred on large repos.
+
+### Fixed
+
+- `boot_reaches_tier0` test converted from a flaky hard wall-clock
+  assertion to a generous hang-guard; the sub-second cold-start figure
+  lives in the published benchmarks instead.
+
+### Changed
+
+- README and `docs/benchmarks.md` carry measured `system_bench`
+  numbers, including the honest monorepo-scale Tier 1 limit.
+
 ## [1.0.0] — 2026-05-15
 
 ### Added
@@ -203,7 +226,8 @@ Entries marked **breaking** require a major version bump.
 
 ---
 
-[Unreleased]: https://github.com/Ezzy1630/argyph/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/Ezzy1630/argyph/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/Ezzy1630/argyph/releases/tag/v1.0.1
 [1.0.0]: https://github.com/Ezzy1630/argyph/releases/tag/v1.0.0
 [1.0.0-rc.2]: https://github.com/Ezzy1630/argyph/releases/tag/v1.0.0-rc.2
 [1.0.0-rc.1]: https://github.com/Ezzy1630/argyph/releases/tag/v1.0.0-rc.1
