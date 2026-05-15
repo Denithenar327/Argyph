@@ -98,7 +98,7 @@ checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
 
 [[package]]
 name = "argyph"
-version = "1.0.0-rc.2"
+version = "1.0.0"
 dependencies = [
  "argyph-cli",
  "clap",
@@ -110,8 +110,9 @@ dependencies = [
 
 [[package]]
 name = "argyph-benches"
-version = "1.0.0-rc.2"
+version = "1.0.0"
 dependencies = [
+ "argyph-core",
  "argyph-fs",
  "argyph-locate",
  "argyph-pack",
@@ -121,12 +122,15 @@ dependencies = [
  "criterion",
  "tempfile",
  "tiktoken-rs",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
  "walkdir",
 ]
 
 [[package]]
 name = "argyph-cli"
-version = "1.0.0-rc.2"
+version = "1.0.0"
 dependencies = [
  "argyph-core",
  "argyph-fs",
@@ -140,7 +144,7 @@ dependencies = [
 
 [[package]]
 name = "argyph-core"
-version = "1.0.0-rc.2"
+version = "1.0.0"
 dependencies = [
  "argyph-embed",
  "argyph-fs",
@@ -162,7 +166,7 @@ dependencies = [
 
 [[package]]
 name = "argyph-embed"
-version = "1.0.0-rc.2"
+version = "1.0.0"
 dependencies = [
  "async-trait",
  "hex",
@@ -180,7 +184,7 @@ dependencies = [
 
 [[package]]
 name = "argyph-fs"
-version = "1.0.0-rc.2"
+version = "1.0.0"
 dependencies = [
  "blake3",
  "camino",
@@ -195,7 +199,7 @@ dependencies = [
 
 [[package]]
 name = "argyph-graph"
-version = "1.0.0-rc.2"
+version = "1.0.0"
 dependencies = [
  "argyph-fs",
  "argyph-parse",
@@ -205,7 +209,7 @@ dependencies = [
 
 [[package]]
 name = "argyph-locate"
-version = "1.0.0-rc.2"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "argyph-embed",
@@ -230,7 +234,7 @@ dependencies = [
 
 [[package]]
 name = "argyph-mcp"
-version = "1.0.0-rc.2"
+version = "1.0.0"
 dependencies = [
  "argyph-core",
  "argyph-fs",
@@ -254,7 +258,7 @@ dependencies = [
 
 [[package]]
 name = "argyph-memory"
-version = "1.0.0-rc.2"
+version = "1.0.0"
 dependencies = [
  "argyph-store",
  "async-trait",
@@ -265,7 +269,7 @@ dependencies = [
 
 [[package]]
 name = "argyph-pack"
-version = "1.0.0-rc.2"
+version = "1.0.0"
 dependencies = [
  "camino",
  "insta",
@@ -275,7 +279,7 @@ dependencies = [
 
 [[package]]
 name = "argyph-parse"
-version = "1.0.0-rc.2"
+version = "1.0.0"
 dependencies = [
  "argyph-fs",
  "blake3",
@@ -296,7 +300,7 @@ dependencies = [
 
 [[package]]
 name = "argyph-store"
-version = "1.0.0-rc.2"
+version = "1.0.0"
 dependencies = [
  "argyph-fs",
  "argyph-graph",

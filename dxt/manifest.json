@@ -3,7 +3,7 @@
   "name": "argyph",
   "display_name": "Argyph",
   "description": "Local-first MCP server for fast, structured, and semantic code context",
-  "version": "1.0.0-rc.2",
+  "version": "1.0.0",
   "mcpServers": {
     "argyph": {
       "command": "argyph",

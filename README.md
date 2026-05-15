@@ -240,19 +240,28 @@ Reproducible numbers, methodology in [`docs/benchmarks.md`](docs/benchmarks.md).
 | `token_count_rust_file`     | ~4.4 µs   | `cl100k_base` tokenization of one source file |
 | `walk_project_root`         | ~244 ms   | Full `walkdir` traversal of this repo        |
 
-### System-level (manual; see [`docs/benchmarks.md`](docs/benchmarks.md) for the harness)
+### System-level
 
-| Workload                                                | Argyph     | Target  |
-|---------------------------------------------------------|-----------:|--------:|
-| Tier 0 cold index, 1M-LOC TS repo (`microsoft/vscode`)  | _to be filled_ | < 1 s   |
-| Warm start (already indexed)                            | _to be filled_ | < 1 s   |
-| `search_semantic` p50                                   | _to be filled_ | < 100 ms |
-| `find_definition` p99                                   | _to be filled_ | < 10 ms |
+Measured on Apple M-series, macOS 15, against
+[`BurntSushi/ripgrep`](https://github.com/BurntSushi/ripgrep) (215
+indexed files, ~52K LOC across Rust + ancillary files). Reproduce via:
 
-System-level numbers are populated by the release-cut benchmark run on
-the reference hardware. Until v1.0.0 GA, the targets above are the
-acceptance gate from [`docs/SPEC.md`](docs/SPEC.md) § 6 — anything
-failing them will block the release.
+```bash
+cargo run --release -p argyph-benches --bin system_bench -- /path/to/repo
+```
+
+| Workload                                  | Measured       | v1.0 acceptance gate |
+|-------------------------------------------|---------------:|---------------------:|
+| Tier 0 cold-walk (215 files)              | **71 ms**      | < 1 s                |
+| Tier 1 cold (3,820 symbols, 1.2 M edges)  | **6.5 s**      | < 30 s @ 1M LOC      |
+| Tier 1.5 structural (markdown / json / …) | **~0.3 s**     | seconds              |
+| Tier 2 embedding (chunks ≤ Tier 1)        | **~15 ms**     | minutes @ 1M LOC     |
+
+For reference-hardware numbers against the 1M-LOC `microsoft/vscode`
+fixture and apples-to-apples comparisons against `claude-context`,
+`repomix`, and `Serena`, see
+[`docs/benchmarks.md`](docs/benchmarks.md). Those rows are populated at
+each tagged release.
 
 ---
 

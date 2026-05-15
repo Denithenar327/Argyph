@@ -13,7 +13,11 @@ argyph-parse = { path = "../crates/argyph-parse" }
 argyph-pack = { path = "../crates/argyph-pack" }
 argyph-locate = { path = "../crates/argyph-locate" }
 argyph-store = { path = "../crates/argyph-store" }
+argyph-core = { path = "../crates/argyph-core" }
 camino = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [lib]
 name = "argyph_benches"
@@ -34,3 +38,7 @@ harness = false
 name = "locate"
 path = "locate.rs"
 harness = false
+
+[[bin]]
+name = "system_bench"
+path = "bin/system_bench.rs"

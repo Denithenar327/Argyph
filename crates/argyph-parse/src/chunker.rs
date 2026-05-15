@@ -129,7 +129,14 @@ pub fn char_split(
     let mut pos = 0;
 
     while pos < text.len() {
-        let end = (pos + max_size).min(text.len());
+        let mut end = (pos + max_size).min(text.len());
+        // Walk `end` back to the nearest char boundary so we never
+        // slice through a multi-byte UTF-8 codepoint. Files with
+        // non-ASCII content (e.g. CSVs with smart quotes or
+        // identifiers in Cyrillic, CJK, etc.) used to panic here.
+        while end > pos && !text.is_char_boundary(end) {
+            end -= 1;
+        }
 
         let slice_end = if end < text.len() {
             find_good_split(&text[pos..end]).unwrap_or(end - pos) + pos
@@ -221,6 +228,25 @@ mod tests {
         let a = ChunkId::from_text("hello world");
         let b = ChunkId::from_text("goodbye world");
         assert_ne!(a, b);
+    }
+
+    #[test]
+    fn char_split_handles_multibyte_utf8_at_window_edge() {
+        // Repro for the panic where `end` would land in the middle of
+        // a multi-byte UTF-8 character (e.g. Cyrillic letters used in
+        // ripgrep's benchsuite data files). The chunker must not
+        // panic — it must walk back to a char boundary.
+        let path = Utf8PathBuf::from("test.txt");
+        // 1024-byte target window deliberately straddled by 'т' (2 bytes).
+        let prefix = "a".repeat(1023);
+        let text = format!("{prefix}тbcdefgh");
+        let chunks = char_split(&path, &text, 0, Language::Markdown, 1024);
+        assert!(!chunks.is_empty());
+        for c in &chunks {
+            // Round-tripping through &str proves every slice landed
+            // on a char boundary.
+            let _ = c.text.as_str();
+        }
     }
 
     #[test]

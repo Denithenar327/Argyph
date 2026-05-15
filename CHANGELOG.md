@@ -8,6 +8,36 @@ Entries marked **breaking** require a major version bump.
 
 ---
 
+## [1.0.0] — 2026-05-15
+
+### Added
+
+- **1.0 GA.** First stable release. All MCP tools, the three-tier
+  progressive index, and every distribution channel (npm, cargo,
+  Homebrew, DXT, GitHub release tarballs) are now publicly supported.
+- `system_bench` binary in `argyph-benches` for end-to-end Supervisor
+  timing on real repositories.
+
+### Fixed
+
+- `argyph-parse::chunker::char_split` panicked when the slice window
+  boundary fell inside a multi-byte UTF-8 character (e.g. Cyrillic /
+  CJK text or smart quotes). The chunker now walks back to the
+  nearest char boundary before slicing. Regression test added.
+
+### Changed
+
+- Release workflow rewritten as a plain target-matrix build, replacing
+  the broken `axodotdev/cargo-dist@v0.28.0` action. Distributes
+  `aarch64-apple-darwin`, `x86_64-unknown-linux-gnu`,
+  `aarch64-unknown-linux-gnu`, `x86_64-pc-windows-msvc`.
+- Intel macOS (`x86_64-apple-darwin`) is now a source-only install
+  channel: `ort` (ONNX Runtime) ships no prebuilt for that target.
+  README, npm `postinstall`, and the Homebrew formula direct Intel Mac
+  users to `cargo install argyph --locked`.
+- README benchmarks table populated with real `cargo run --release -p
+  argyph-benches --bin system_bench` numbers against `BurntSushi/ripgrep`.
+
 ## [Unreleased]
 
 ### Added
@@ -166,7 +196,9 @@ Entries marked **breaking** require a major version bump.
 
 ---
 
-[Unreleased]: https://github.com/Ezzy1630/argyph/compare/v1.0.0-rc.1...HEAD
+[Unreleased]: https://github.com/Ezzy1630/argyph/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/Ezzy1630/argyph/releases/tag/v1.0.0
+[1.0.0-rc.2]: https://github.com/Ezzy1630/argyph/releases/tag/v1.0.0-rc.2
 [1.0.0-rc.1]: https://github.com/Ezzy1630/argyph/releases/tag/v1.0.0-rc.1
 [0.3.0-beta]: https://github.com/Ezzy1630/argyph/releases/tag/v0.3.0-beta
 [0.2.0-alpha]: https://github.com/Ezzy1630/argyph/releases/tag/v0.2.0-alpha

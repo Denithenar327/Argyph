@@ -8,7 +8,20 @@ Detailed milestone definitions are in [`docs/BUILD_PLAN.md`](docs/BUILD_PLAN.md)
 
 ---
 
-## Shipped — `v1.1`
+## Shipped — `v1.0.0`
+
+- [x] **General availability.** All MCP tools, the three-tier
+      progressive index, and every distribution channel (npm, cargo,
+      Homebrew, DXT, GitHub release tarballs) are stable and publicly
+      supported.
+- [x] Reproducible system-level benchmarks via `cargo run -p
+      argyph-benches --bin system_bench`.
+- [x] UTF-8 chunker correctness — files with multi-byte characters
+      (Cyrillic, CJK, smart quotes) no longer panic during Tier 1.
+
+---
+
+## Shipped — `v1.1` (in `main`, included in v1.0)
 
 - [x] **Context Discipline** — `ask` meta-tool, universal bounded `Span`
       responses, `expand_span`, MCP Prompts, agent-oriented tool
