@@ -17,9 +17,9 @@ workspace = true
 
 [dependencies]
 thiserror.workspace = true
-argyph-fs = { path = "../argyph-fs", version = "=1.0.0-rc.1" }
-argyph-parse = { path = "../argyph-parse", version = "=1.0.0-rc.1" }
-argyph-graph = { path = "../argyph-graph", version = "=1.0.0-rc.1" }
+argyph-fs = { path = "../argyph-fs", version = "=1.0.0-rc.2" }
+argyph-parse = { path = "../argyph-parse", version = "=1.0.0-rc.2" }
+argyph-graph = { path = "../argyph-graph", version = "=1.0.0-rc.2" }
 rusqlite = { version = "0.32", features = ["bundled"] }
 async-trait = "0.1"
 camino = "1"

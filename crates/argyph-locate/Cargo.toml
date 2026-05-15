@@ -19,11 +19,11 @@ workspace = true
 smart = ["dep:reqwest", "dep:eventsource-stream"]
 
 [dependencies]
-argyph-store = { path = "../argyph-store", version = "=1.0.0-rc.1" }
-argyph-fs = { path = "../argyph-fs", version = "=1.0.0-rc.1" }
-argyph-parse = { path = "../argyph-parse", version = "=1.0.0-rc.1" }
-argyph-embed = { path = "../argyph-embed", version = "=1.0.0-rc.1" }
-argyph-graph = { path = "../argyph-graph", version = "=1.0.0-rc.1" }
+argyph-store = { path = "../argyph-store", version = "=1.0.0-rc.2" }
+argyph-fs = { path = "../argyph-fs", version = "=1.0.0-rc.2" }
+argyph-parse = { path = "../argyph-parse", version = "=1.0.0-rc.2" }
+argyph-embed = { path = "../argyph-embed", version = "=1.0.0-rc.2" }
+argyph-graph = { path = "../argyph-graph", version = "=1.0.0-rc.2" }
 anyhow = "1"
 async-trait = "0.1"
 blake3 = "1"
