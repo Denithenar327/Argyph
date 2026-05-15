@@ -25,6 +25,13 @@ Entries marked **breaking** require a major version bump.
   CJK text or smart quotes). The chunker now walks back to the
   nearest char boundary before slicing. Regression test added.
 
+### Performance
+
+- Tier 1 within-file reference resolution rewritten from an
+  `O(symbols² × text-length)` substring scan to one-pass hash-indexed
+  word lookups. 4.2× faster Tier 1 on symbol-dense code (TypeScript
+  compiler source: 34.6 s → 8.2 s), edge count unchanged.
+
 ### Changed
 
 - Release workflow rewritten as a plain target-matrix build, replacing

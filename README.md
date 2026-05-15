@@ -250,22 +250,23 @@ cargo run --release -p argyph-benches --bin system_bench -- /path/to/repo
 
 | Fixture                              | Files  | LOC    | Tier 0 cold | Tier 1 full |
 |--------------------------------------|-------:|-------:|------------:|------------:|
-| `BurntSushi/ripgrep`                 |    215 |   ~52K |    **71 ms**|   **6.5 s** |
-| `microsoft/TypeScript` (`src/`)      |    709 |  ~452K |    **30 ms**|  **34.6 s** |
+| `BurntSushi/ripgrep`                 |    215 |   ~52K |    **71 ms**|   **6.8 s** |
+| `microsoft/TypeScript` (`src/`)      |    709 |  ~452K |    **30 ms**|   **8.2 s** |
 | `microsoft/TypeScript` (whole repo)  | 81,310 |    ~2M |   **2.1 s** | see note ↓  |
 
 **Tier 0 — the "useful immediately" gate — scales linearly and fast**
 (81K files in 2.1 s). `search_text` and `pack_repo` are available the
 moment Tier 0 is ready.
 
-**Tier 1 (the symbol graph) has a known scaling limit:** within-file
-reference resolution is currently O(symbols²) per file, so on very
-large repositories edge-building is slow (it does not finish within 15
-min on the full 81K-file TypeScript repo). The server never blocks —
-Tier-1 tools return `INDEX_NOT_READY` with a retry hint until the graph
-is ready. Optimizing the edge-builder is the top item in
-[ROADMAP.md](ROADMAP.md). Full methodology and competitor comparisons:
-[`docs/benchmarks.md`](docs/benchmarks.md).
+**Tier 1 (the symbol graph) is fast on normal-to-large repos.** The
+within-file reference resolver was rewritten from an O(symbols²)
+substring scan to one-pass hash-indexed lookups — a 4.2× speedup
+(TypeScript compiler source: 34.6 s → 8.2 s). On *very* large
+monorepos (the full 81K-file TypeScript repo, ~2M LOC) Tier 1 still
+does not finish within 15 min — the remaining cost is raw parse +
+edge-upsert volume. The server never blocks: Tier-1 tools return
+`INDEX_NOT_READY` with a retry hint until the graph is ready. See
+[ROADMAP.md](ROADMAP.md) and [`docs/benchmarks.md`](docs/benchmarks.md).
 
 ---
 

@@ -57,13 +57,16 @@ hardware and benchmarks are published in
 
 ## Now (v1.1 — performance)
 
-- [ ] **Tier 1 edge-builder performance.** `argyph-graph::builder`
-      resolves within-file references with an O(symbols²) per-file
-      scan. On repositories with very high symbol density (e.g. the
-      full 81K-file TypeScript repo) edge-building does not complete
-      in a practical window. Replace the nested scan with a
-      name-indexed single pass so Tier 1 scales linearly. See
-      `docs/benchmarks.md` § 5.
+- [x] **Tier 1 edge-builder, per-file pass.** The within-file
+      reference resolver was rewritten from an `O(symbols² ×
+      text-length)` substring scan to one-pass hash-indexed lookups.
+      4.2× faster on symbol-dense code (TypeScript compiler source:
+      34.6 s → 8.2 s). See `docs/benchmarks.md` § 5.
+- [ ] **Tier 1 at monorepo scale.** On very large repos (81K+ files,
+      ~2M LOC) Tier 1 still does not finish in a practical window —
+      the remaining cost is parse volume and the SQLite upsert of tens
+      of millions of edges. Needs streaming/batched edge upserts and
+      parallel parse tuning.
 - [ ] Publish reproducible benchmarks against `claude-context`, `repomix`,
       and `Serena` in `docs/benchmarks.md`.
 - [ ] Cross-platform install QA: macOS arm64, Linux x64/arm64,

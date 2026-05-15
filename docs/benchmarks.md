@@ -93,27 +93,33 @@ ARGYPH_BENCH_CAP_SECS=900 cargo run --release -p argyph-benches \
   --bin system_bench -- /path/to/repo
 ```
 
-| Repo / fixture                          | Files  | LOC    | Tier 0 cold | Tier 1 full | Tier 1.5 |
-|-----------------------------------------|-------:|-------:|------------:|------------:|---------:|
-| `BurntSushi/ripgrep`                    |    215 |   ~52K |       71 ms |       6.5 s |   ~0.3 s |
-| `microsoft/TypeScript` (`src/` only)    |    709 |  ~452K |       30 ms |      34.6 s |   ~0.3 s |
-| `microsoft/TypeScript` (whole repo)     | 81,310 |    ~2M |        2.1 s | > 15 min ⚠️ |        — |
+| Repo / fixture                          | Files  | LOC    | Tier 0 cold | Tier 1 full  | Tier 1.5 |
+|-----------------------------------------|-------:|-------:|------------:|-------------:|---------:|
+| `BurntSushi/ripgrep`                    |    215 |   ~52K |       71 ms |        6.8 s |   ~0.3 s |
+| `microsoft/TypeScript` (`src/` only)    |    709 |  ~452K |       30 ms |        8.2 s |   ~0.3 s |
+| `microsoft/TypeScript` (whole repo)     | 81,310 |    ~2M |       2.1 s | > 15 min ⚠️  |        — |
 
 **Tier 0 scales linearly and stays fast** — 81K files indexed in 2.1 s.
 It is the gate that matters for "useful immediately," and it is met
 comfortably.
 
-**Tier 1 has a known scaling limit.** Within-file reference resolution
-in `argyph-graph::builder` is O(symbols²) per file, so wall-clock grows
-super-linearly with symbol density. On the 452K-LOC TypeScript compiler
-source Tier 1 completes in ~35 s; on the full 81K-file TypeScript repo
-(dominated by ~60K tiny single-symbol test fixtures) edge-building does
-not complete within a 15-minute window. The server stays fully usable
-throughout — Tier 0, `search_text`, and `pack_repo` are available the
-whole time, and tools requiring Tier 1 return `INDEX_NOT_READY` with a
-`retry_after_ms` hint rather than blocking. Optimizing the
-edge-builder to a name-indexed pass is tracked in `ROADMAP.md` under
-"Now (v1.1)".
+**Tier 1 on normal-to-large repos is fast.** The within-file reference
+resolver in `argyph-graph::builder` was rewritten from an
+`O(symbols² × text-length)` substring scan to a one-pass tokenization
+into hash-set word indices, with O(1) per-pair lookups. On the
+452K-LOC TypeScript compiler source this cut Tier 1 wall-clock from
+**34.6 s to 8.2 s** (4.2×) with the edge count unchanged.
+
+**Very large monorepos remain a known scaling limit.** On the full
+81K-file TypeScript repo (~2M LOC, dominated by ~60K tiny test
+fixtures) Tier 1 still does not finish within a 15-minute window — the
+remaining cost is parse *volume* and the SQLite edge upsert of tens of
+millions of rows, not the per-file algorithm. The server stays fully
+usable throughout: Tier 0, `search_text`, and `pack_repo` are
+available the whole time, and tools requiring Tier 1 return
+`INDEX_NOT_READY` with a `retry_after_ms` hint rather than blocking.
+Streaming/parallel edge upserts for repos of this size are tracked in
+`ROADMAP.md`.
 
 ---
 
