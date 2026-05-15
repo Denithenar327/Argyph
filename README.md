@@ -258,15 +258,17 @@ cargo run --release -p argyph-benches --bin system_bench -- /path/to/repo
 (81K files in 2.1 s). `search_text` and `pack_repo` are available the
 moment Tier 0 is ready.
 
-**Tier 1 (the symbol graph) is fast on normal-to-large repos.** The
-within-file reference resolver was rewritten from an O(symbols²)
-substring scan to one-pass hash-indexed lookups — a 4.2× speedup
-(TypeScript compiler source: 34.6 s → 8.2 s). On *very* large
+**Tier 1 (the symbol graph) is fast on normal-to-large repos.** Two
+optimizations landed for v1.0: the within-file reference resolver was
+rewritten from an O(symbols²) substring scan to one-pass hash-indexed
+lookups (4.2× — TypeScript compiler source: 34.6 s → 8.2 s), and the
+per-file symbol/chunk SQL writes are now batched. On *very* large
 monorepos (the full 81K-file TypeScript repo, ~2M LOC) Tier 1 still
-does not finish within 15 min — the remaining cost is raw parse +
-edge-upsert volume. The server never blocks: Tier-1 tools return
-`INDEX_NOT_READY` with a retry hint until the graph is ready. See
-[ROADMAP.md](ROADMAP.md) and [`docs/benchmarks.md`](docs/benchmarks.md).
+does not finish within 30 min — the residual cost is raw tree-sitter
+parse volume across 79K files, which needs streaming/parallel indexing
+(tracked in [ROADMAP.md](ROADMAP.md)). The server never blocks at any
+scale: Tier-1 tools return `INDEX_NOT_READY` with a retry hint until
+the graph is ready. Full data: [`docs/benchmarks.md`](docs/benchmarks.md).
 
 ---
 

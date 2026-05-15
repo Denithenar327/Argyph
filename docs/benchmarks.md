@@ -97,7 +97,7 @@ ARGYPH_BENCH_CAP_SECS=900 cargo run --release -p argyph-benches \
 |-----------------------------------------|-------:|-------:|------------:|-------------:|---------:|
 | `BurntSushi/ripgrep`                    |    215 |   ~52K |       71 ms |        6.8 s |   ~0.3 s |
 | `microsoft/TypeScript` (`src/` only)    |    709 |  ~452K |       30 ms |        8.2 s |   ~0.3 s |
-| `microsoft/TypeScript` (whole repo)     | 81,310 |    ~2M |       2.1 s | > 15 min ⚠️  |        — |
+| `microsoft/TypeScript` (whole repo)     | 81,310 |    ~2M |       2.1 s | > 30 min ⚠️  |        — |
 
 **Tier 0 scales linearly and stays fast** — 81K files indexed in 2.1 s.
 It is the gate that matters for "useful immediately," and it is met
@@ -110,16 +110,20 @@ into hash-set word indices, with O(1) per-pair lookups. On the
 452K-LOC TypeScript compiler source this cut Tier 1 wall-clock from
 **34.6 s to 8.2 s** (4.2×) with the edge count unchanged.
 
-**Very large monorepos remain a known scaling limit.** On the full
-81K-file TypeScript repo (~2M LOC, dominated by ~60K tiny test
-fixtures) Tier 1 still does not finish within a 15-minute window — the
-remaining cost is parse *volume* and the SQLite edge upsert of tens of
-millions of rows, not the per-file algorithm. The server stays fully
-usable throughout: Tier 0, `search_text`, and `pack_repo` are
-available the whole time, and tools requiring Tier 1 return
-`INDEX_NOT_READY` with a `retry_after_ms` hint rather than blocking.
-Streaming/parallel edge upserts for repos of this size are tracked in
-`ROADMAP.md`.
+**Very large monorepos remain a known scaling limit.** Two
+optimizations were applied and verified: the O(symbols²) edge-builder
+rewrite above, and batching the per-file symbol/chunk SQL writes
+(previously ~158K individual transaction commits on this repo, now a
+few hundred). Both help — but on the full 81K-file TypeScript repo
+(~2M LOC, dominated by ~60K tiny test fixtures) Tier 1 still does not
+complete within a 30-minute window. The residual cost is raw
+tree-sitter parse *volume* across 79K files plus the edge upsert,
+which needs streaming/parallel indexing rather than a point fix. The
+server stays fully usable throughout: Tier 0, `search_text`, and
+`pack_repo` are available the whole time, and tools requiring Tier 1
+return `INDEX_NOT_READY` with a `retry_after_ms` hint rather than
+blocking. Monorepo-scale Tier 1 (streaming upserts + parallel parse)
+is tracked in `ROADMAP.md` under "Now (v1.1 — performance)".
 
 ---
 
