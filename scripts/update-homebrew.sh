@@ -49,11 +49,23 @@ for entry in "${TARGETS[@]}"; do
     SHA=$(shasum -a 256 "$TMP_DIR/${archive}" | cut -d' ' -f1)
     echo "  ${target}: ${SHA}"
 
+    # Replace the placeholder, if the formula still carries one.
     sed -i.bak -E "s|REPLACE_WITH_${slot}_SHA256|${SHA}|" "$FORMULA"
-    # Also rewrite any existing matching hash slot if running for a new version.
-    sed -i.bak -E "s|(${target}.tar.xz\".*\n *sha256 \")[a-f0-9]+|\1${SHA}|" "$FORMULA" || true
 
-    # Update URL to current version.
+    # Rewrite the sha256 line that immediately follows this target's url
+    # line. `sed` cannot match across newlines, so use awk: when a line
+    # contains this target's archive name, the next `sha256 "..."` line
+    # is rewritten.
+    awk -v archive="${archive}" -v sha="${SHA}" '
+        index($0, archive) > 0 { pending = 1 }
+        pending && /sha256 "/ {
+            sub(/sha256 "[a-f0-9]*"/, "sha256 \"" sha "\"")
+            pending = 0
+        }
+        { print }
+    ' "$FORMULA" > "${FORMULA}.tmp" && mv "${FORMULA}.tmp" "$FORMULA"
+
+    # Update URL to the current version.
     sed -i.bak -E "s|v[0-9][^/]*/${archive}|${VERSION}/${archive}|g" "$FORMULA"
 done
 

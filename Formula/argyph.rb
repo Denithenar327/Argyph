@@ -9,7 +9,7 @@ class Argyph < Formula
   on_macos do
     on_arm do
       url "https://github.com/Ezzy1630/argyph/releases/download/v1.0.1/argyph-aarch64-apple-darwin.tar.xz"
-      sha256 "ea8b48f68c20ae1c61c31dea9cbbff11aa69dbee04b3863b74671fa77a1bf13f"
+      sha256 "53296d2a06f712feae8b5d3cf19a4b79209457437669ad72c8a7d32098606d47"
     end
     # Intel Mac: no prebuilt available (ort/ONNX Runtime does not ship
     # an x86_64-apple-darwin binary). Fall back to building from source
@@ -19,11 +19,11 @@ class Argyph < Formula
   on_linux do
     on_arm do
       url "https://github.com/Ezzy1630/argyph/releases/download/v1.0.1/argyph-aarch64-unknown-linux-gnu.tar.xz"
-      sha256 "ade04588a7a4bfddef6da89ae88d472dabaa84828340a9741c3e6432525410e9"
+      sha256 "2ebacfb0c80e01c6535de268e3f7cacc8da2aaa3be043d9e2b769fe378dfab24"
     end
     on_intel do
       url "https://github.com/Ezzy1630/argyph/releases/download/v1.0.1/argyph-x86_64-unknown-linux-gnu.tar.xz"
-      sha256 "7fa932b0538a4e614be973c912548a3ccddb066af7498adc42d6e774a9b917d6"
+      sha256 "470f00ef30eca989dde415dde8030682d75eb3c296064a7182381145cee733e9"
     end
   end
 
