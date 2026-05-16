@@ -69,13 +69,13 @@ curl -fsSL https://raw.githubusercontent.com/Ezzy1630/argyph/main/scripts/instal
 
 ### Cargo
 
-`cargo install argyph` builds Argyph from source. The bundled local
-embedder uses [`ort`](https://crates.io/crates/ort) (ONNX Runtime); on
-most platforms `ort` ships a prebuilt dynamic library and there is
-nothing to do. On Linux you may need `libssl-dev` and a working C
-toolchain; on Windows the MSVC build tools are required. If the build
-fails on `ort-sys` linkage, set `ORT_STRATEGY=download` before
-re-running.
+`cargo install argyph` builds Argyph from source. Requires a **Rust
+toolchain ≥ 1.88** (`rustup update`). The bundled local embedder uses
+[`ort`](https://crates.io/crates/ort) (ONNX Runtime); on most
+platforms `ort` ships a prebuilt dynamic library and there is nothing
+to do. On Linux you may need `libssl-dev` and a working C toolchain;
+on Windows the MSVC build tools are required. If the build fails on
+`ort-sys` linkage, set `ORT_STRATEGY=download` before re-running.
 
 ```bash
 cargo install argyph --locked

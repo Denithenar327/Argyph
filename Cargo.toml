@@ -19,6 +19,7 @@ members = [
 [workspace.package]
 version = "1.0.1"
 edition = "2021"
+rust-version = "1.88"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/Ezzy1630/argyph"
 homepage = "https://github.com/Ezzy1630/argyph"
