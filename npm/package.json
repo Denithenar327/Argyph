@@ -1,5 +1,5 @@
 {
-  "name": "@argyph/server",
+  "name": "argyph",
   "version": "1.0.1",
   "description": "Local-first MCP server giving AI coding agents fast, structured, and semantic context over any codebase.",
   "bin": {

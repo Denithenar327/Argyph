@@ -5,7 +5,7 @@
 
 [![CI](https://github.com/Ezzy1630/argyph/actions/workflows/ci.yml/badge.svg)](https://github.com/Ezzy1630/argyph/actions/workflows/ci.yml)
 [![crates.io](https://img.shields.io/crates/v/argyph.svg)](https://crates.io/crates/argyph)
-[![npm](https://img.shields.io/npm/v/@argyph/server.svg)](https://www.npmjs.com/package/@argyph/server)
+[![npm](https://img.shields.io/npm/v/argyph.svg)](https://www.npmjs.com/package/argyph)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 
 Argyph is a single MCP server that gives any AI coding agent fast, structured, and semantic context over a codebase. It runs entirely on your machine, indexes incrementally, and is ready in under a second on previously-indexed repos.
@@ -42,13 +42,13 @@ Most existing context servers depend on a cloud vector database (Milvus, Pinecon
 ### Claude Code
 
 ```bash
-claude mcp add argyph -- npx @argyph/server@latest
+claude mcp add argyph -- npx argyph@latest
 ```
 
 ### npm / npx
 
 ```bash
-npx @argyph/server
+npx argyph
 ```
 
 ### Homebrew (macOS / Linux)
@@ -103,7 +103,7 @@ Download `argyph.dxt` from the [latest release](https://github.com/Ezzy1630/argy
 # In any repo
 cd ~/code/your-repo
 argyph init
-claude mcp add argyph -- npx @argyph/server@latest
+claude mcp add argyph -- npx argyph@latest
 claude
 ```
 

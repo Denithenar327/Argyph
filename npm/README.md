@@ -1,4 +1,4 @@
-# @argyph/server
+# argyph
 
 Local-first MCP server giving AI coding agents fast, structured, and semantic context over any codebase. No API keys, no cloud, no daemon — a single Rust binary with an embedded vector store and a bundled ONNX embedder.
 
@@ -10,10 +10,10 @@ release, verifies the SHA256, and places it on your `PATH`.
 
 ```bash
 # One-shot (no global install)
-npx @argyph/server
+npx argyph
 
 # Or, persistent
-npm install -g @argyph/server
+npm install -g argyph
 ```
 
 ## Quick start
@@ -21,7 +21,7 @@ npm install -g @argyph/server
 ```bash
 # Inside any repo
 argyph init                                  # writes agent instructions
-claude mcp add argyph -- npx @argyph/server  # register with Claude Code
+claude mcp add argyph -- npx argyph  # register with Claude Code
 ```
 
 Then ask your agent any structural ("where is `parseConfig` defined?")
