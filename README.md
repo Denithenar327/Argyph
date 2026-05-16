@@ -35,9 +35,8 @@ Most existing context servers depend on a cloud vector database (Milvus, Pinecon
 
 ## Install
 
-> The first tagged release is `v1.0.0-rc.1`. If you don't see a published
-> package on a given channel yet, use the **Build from source** path below —
-> it works on any platform with a current Rust toolchain.
+> Current release: **`v1.0.1`** — published on npm, crates.io, the
+> Homebrew tap, and as prebuilt GitHub-release binaries.
 
 ### Claude Code
 
