@@ -9,6 +9,18 @@ use crate::{hash, language::Language, path, FileEntry, Walker};
 /// The default file size cap — 5 MiB.
 pub const DEFAULT_MAX_FILE_SIZE: u64 = 5 * 1024 * 1024;
 
+/// Normalize a relative path to forward slashes so stored paths are
+/// identical across platforms. On Windows `Utf8Path` yields `\`
+/// separators; downstream consumers (graph, store, MCP responses) expect
+/// stable `/`-separated paths.
+fn normalize_separators(p: Utf8PathBuf) -> Utf8PathBuf {
+    if std::path::MAIN_SEPARATOR == '\\' {
+        Utf8PathBuf::from(p.as_str().replace('\\', "/"))
+    } else {
+        p
+    }
+}
+
 /// An ignore-aware filesystem walker powered by the [`ignore`] crate.
 ///
 /// Respects `.gitignore`, `.ignore`, and system-level git exclude rules.
@@ -84,7 +96,8 @@ impl Walker for IgnoreWalker {
                     .path()
                     .strip_prefix(root_abs.as_std_path())
                     .ok()
-                    .and_then(|p| Utf8PathBuf::from_path_buf(p.to_path_buf()).ok())?;
+                    .and_then(|p| Utf8PathBuf::from_path_buf(p.to_path_buf()).ok())
+                    .map(normalize_separators)?;
 
                 if let Some(ref allowed) = allowed {
                     let ext = rel
@@ -187,7 +200,8 @@ impl Walker for PollingWalker {
                     .path()
                     .strip_prefix(root_abs.as_std_path())
                     .ok()
-                    .and_then(|p| Utf8PathBuf::from_path_buf(p.to_path_buf()).ok())?;
+                    .and_then(|p| Utf8PathBuf::from_path_buf(p.to_path_buf()).ok())
+                    .map(normalize_separators)?;
                 let abs = root_abs.join(&rel);
                 let metadata = entry.metadata().ok()?;
                 let size = metadata.len();
@@ -239,17 +253,22 @@ mod tests {
         // Must find at least the Rust source files
         assert!(!entries.is_empty(), "no entries found in fixture");
 
-        let paths: Vec<&str> = entries.iter().map(|e| e.path.as_str()).collect();
+        // Normalize separators so the assertions hold on Windows, where
+        // `Utf8Path` yields backslashes (`src\main.rs`).
+        let paths: Vec<String> = entries
+            .iter()
+            .map(|e| e.path.as_str().replace('\\', "/"))
+            .collect();
         assert!(
-            paths.contains(&"src/main.rs"),
+            paths.iter().any(|p| p == "src/main.rs"),
             "missing src/main.rs — got {paths:?}"
         );
         assert!(
-            paths.contains(&"src/lib.rs"),
+            paths.iter().any(|p| p == "src/lib.rs"),
             "missing src/lib.rs — got {paths:?}"
         );
         assert!(
-            paths.contains(&"README.md"),
+            paths.iter().any(|p| p == "README.md"),
             "missing README.md — got {paths:?}"
         );
     }

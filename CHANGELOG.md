@@ -8,6 +8,21 @@ Entries marked **breaking** require a major version bump.
 
 ---
 
+## [1.0.2] — 2026-05-18
+
+### Fixed
+
+- `IgnoreWalker` and `PollingWalker` now normalize file paths to
+  forward slashes on all platforms. On Windows `Utf8Path` yielded
+  backslash separators (`src\main.rs`), producing inconsistent paths
+  in the symbol graph, store, and MCP responses — and failing the
+  `walker::tests::walk_yields_files` test on `windows-latest`.
+
+### Changed
+
+- README polished: SVG banner, collapsible sections, refreshed
+  project-status and install copy.
+
 ## [1.0.1] — 2026-05-15
 
 ### Performance
