@@ -7,25 +7,30 @@
 [![CI](https://github.com/Ezzy1630/argyph/actions/workflows/ci.yml/badge.svg)](https://github.com/Ezzy1630/argyph/actions/workflows/ci.yml)
 [![crates.io](https://img.shields.io/crates/v/argyph.svg?logo=rust&logoColor=white)](https://crates.io/crates/argyph)
 [![npm](https://img.shields.io/npm/v/argyph.svg?logo=npm)](https://www.npmjs.com/package/argyph)
+[![Downloads](https://img.shields.io/crates/d/argyph.svg?logo=rust&logoColor=white&label=downloads)](https://crates.io/crates/argyph)
 [![Homebrew](https://img.shields.io/badge/homebrew-Ezzy1630%2Fargyph-F9A03C?logo=homebrew&logoColor=white)](https://github.com/Ezzy1630/homebrew-argyph)
-[![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
-[![MSRV](https://img.shields.io/badge/rustc-1.88%2B-orange.svg?logo=rust&logoColor=white)](#cargo)
 
-**One MCP server. Fast, structured, and semantic context over any codebase — entirely on your machine.**
+**Stop wiring six MCP servers.** Argyph is one local binary that gives your AI coding agent grep, a symbol graph, and semantic search over any repo — indexed in under a second, with no API key.
 
 [Install](#-install) · [Quick start](#-quick-start) · [How it works](#-how-it-works) · [Tools](#-tools) · [Architecture](ARCHITECTURE.md) · [Roadmap](ROADMAP.md)
+
+<br/>
+
+![Argyph replaces a stack of single-purpose MCP servers with one local binary](docs/assets/before-after.svg)
+
+⭐ If this looks useful, a star helps others find it.
 
 </div>
 
 ---
 
-Argyph is a single MCP server that gives any AI coding agent fast, structured, and semantic context over a codebase. It runs entirely on your machine, indexes incrementally, and is ready in under a second on previously-indexed repos.
+Most developers stitch together a half-dozen MCP servers to give an AI agent context over a codebase — one for grep, one for embeddings, one for symbol search, one for repo packing. Each is a separate install, a separate process, and (often) a separate cloud account. Argyph replaces all of them with a single local binary. It indexes incrementally and is ready in under a second on previously-indexed repos — no daemon, no account, no API key.
 
 > The name is a portmanteau of **Argus** (the hundred-eyed watcher of Greek myth) and **Glyph** (a carved symbol with bound meaning) — a server that watches a codebase and gives the agent its symbols.
 
-## ✦ What it does
+## ✨ What it does
 
-Argyph replaces the half-dozen MCP servers most developers stitch together — one for grep, one for embeddings, one for symbol search, one for repo packing — with a single tool. It exposes three pillars of context behind one MCP endpoint:
+Argyph exposes three pillars of context behind one MCP endpoint:
 
 | Pillar | What you get |
 |--------|--------------|
@@ -36,6 +41,8 @@ Argyph replaces the half-dozen MCP servers most developers stitch together — o
 
 > [!NOTE]
 > Everything is **read-only**. Argyph never edits, commits, or executes code.
+
+**Local-first by design.** Every tier runs on the developer's machine — your proprietary code never touches a cloud vector DB or a remote embedding API, and a bundled embedding model means full functionality with zero keys.
 
 <details>
 <summary><b>Why local-first?</b></summary>
@@ -48,7 +55,7 @@ Argyph runs entirely on the developer's machine: a single binary, an embedded ve
 
 </details>
 
-## ⬇ Install
+## 📥 Install
 
 > Current release: **`v1.0.4`** — published on npm, crates.io, the Homebrew tap, and as prebuilt GitHub-release binaries.
 
@@ -115,7 +122,7 @@ Download `argyph.dxt` from the [latest release](https://github.com/Ezzy1630/argy
 
 </details>
 
-## ⚡ Quick start
+## 🚀 Quick start
 
 ```bash
 # In any repo
@@ -129,9 +136,28 @@ In the chat:
 
 > *What does this codebase do, and where is session expiration controlled?*
 
+Behind the scenes the agent calls `ask`, and Argyph returns bounded spans — not whole files — so the agent reads only what matters:
+
+```json
+{
+  "spans": [
+    {
+      "file": "src/auth/session.rs",
+      "start_line": 41,
+      "end_line": 55,
+      "text": "fn is_expired(&self, now: Instant) -> bool { ... }",
+      "kind": "definition",
+      "symbol": "is_expired",
+      "language": "rust"
+    }
+  ],
+  "strategy_used": "definition"
+}
+```
+
 Argyph indexes Tier 0 in under a second on first run, Tier 1 (symbol graph) in seconds, and Tier 2 (embeddings) in the background. You can query immediately — tools return what's available now plus an `index_coverage` field so the agent knows.
 
-## ⚙ How it works
+## ⚙️ How it works
 
 ![Argyph three-tier indexing](docs/assets/three-tier-indexing.svg)
 
@@ -246,9 +272,11 @@ argyph init
 | Serena                      |      ✅      |       —         |     ✅      |       ✅       |     —       |
 | **Argyph**                  |    **✅**    |     **✅**      |   **✅**    |     **✅**     |   **✅**    |
 
+> Argyph is the only one that's all five — symbol graph **and** semantic search, local-first, one install, incremental.
+
 ## 📊 Benchmarks
 
-Reproducible numbers, methodology in [`docs/benchmarks.md`](docs/benchmarks.md). Reproduce locally with `cargo bench --workspace`. Numbers below are the median of three runs on the reference hardware tagged `m3-pro` (Apple M3 Pro, 36 GB RAM, macOS 15) unless stated otherwise.
+Reproducible numbers, methodology in [`docs/benchmarks.md`](docs/benchmarks.md). Reproduce locally with `cargo bench --workspace`. Numbers below are the median of three runs on the reference hardware tagged `m4-air` (Apple M4 MacBook Air, 16 GB RAM, macOS 26) unless stated otherwise.
 
 | Fixture                              | Files  | LOC    | Tier 0 cold | Tier 1 full |
 |--------------------------------------|-------:|-------:|------------:|------------:|
@@ -298,7 +326,7 @@ the graph is ready. Full data: [`docs/benchmarks.md`](docs/benchmarks.md).
 
 </details>
 
-## 🏗 Architecture
+## 🏗️ Architecture
 
 Argyph is a Rust workspace of twelve focused crates with strict module ownership. The full architecture — including the Supervisor lifecycle, the three-tier indexing model, and per-crate responsibility boundaries — is documented in [ARCHITECTURE.md](ARCHITECTURE.md).
 
@@ -315,6 +343,9 @@ Argyph is built with substantial AI assistance, but human-architected and human-
 Built by [Ezzy1630](https://github.com/Ezzy1630). See [AUTHORS.md](AUTHORS.md).
 
 ## 📄 License
+
+[![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#-license)
+[![MSRV](https://img.shields.io/badge/rustc-1.88%2B-orange.svg?logo=rust&logoColor=white)](#cargo)
 
 Dual-licensed under either of:
 

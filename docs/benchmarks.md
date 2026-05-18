@@ -16,7 +16,7 @@ All published numbers are taken on at least one of:
 
 | Tag         | Machine                                       | OS              |
 |-------------|-----------------------------------------------|-----------------|
-| `m3-pro`    | Apple M3 Pro, 36 GB RAM                       | macOS 15        |
+| `m4-air`    | Apple M4 MacBook Air, 16 GB RAM               | macOS 26        |
 | `ryzen-7950`| AMD Ryzen 9 7950X, 64 GB RAM, NVMe SSD        | Ubuntu 24.04    |
 | `m1-air`    | Apple M1 Air, 16 GB RAM                       | macOS 15        |
 
@@ -83,7 +83,7 @@ These are sanity checks, not end-to-end claims.
 
 ## 5. End-to-end results
 
-Measured on an Apple M-series laptop, macOS 15, with the
+Measured on an Apple M-series laptop, macOS 26, with the
 `system_bench` harness:
 
 ```bash
