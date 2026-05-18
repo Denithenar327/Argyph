@@ -276,7 +276,7 @@ argyph init
 
 ## 📊 Benchmarks
 
-Reproducible numbers, methodology in [`docs/benchmarks.md`](docs/benchmarks.md). Reproduce locally with `cargo bench --workspace`. Numbers below are the median of three runs on the reference hardware tagged `m4-air` (Apple M4 MacBook Air, 16 GB RAM, macOS 26) unless stated otherwise.
+Full methodology and reproduction steps are in [`docs/benchmarks.md`](docs/benchmarks.md) — reproduce locally with `cargo bench --workspace`. Numbers below are the median of three runs on the reference hardware tagged `m4-air` (Apple M4 MacBook Air, 16 GB RAM, macOS 26) unless stated otherwise.
 
 | Fixture                              | Files  | LOC    | Tier 0 cold | Tier 1 full |
 |--------------------------------------|-------:|-------:|------------:|------------:|
