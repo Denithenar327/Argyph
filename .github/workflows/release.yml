@@ -177,8 +177,10 @@ jobs:
         run: |
           VERSION="${REF_NAME#v}"
           cd npm
-          node -e "const fs=require('fs');const p=require('./package.json');p.version=process.env.VERSION;fs.writeFileSync('./package.json',JSON.stringify(p,null,2)+'\n')"
-          export VERSION
+          # VERSION must be in the environment of the node process itself —
+          # a plain shell var is not visible via process.env.
+          VERSION="$VERSION" node -e "const fs=require('fs');const p=require('./package.json');p.version=process.env.VERSION;fs.writeFileSync('./package.json',JSON.stringify(p,null,2)+'\n')"
+          echo "npm/package.json version synced to $VERSION"
       - name: Publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

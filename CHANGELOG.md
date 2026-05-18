@@ -8,6 +8,19 @@ Entries marked **breaking** require a major version bump.
 
 ---
 
+## [1.0.3] — 2026-05-18
+
+### Fixed
+
+- `argyph-graph` import resolver: `normalize_path()` split only on `/`,
+  leaving Windows `\`-separated resolver candidates unnormalized — it
+  now converts `\` to `/` first, fixing the `resolve::{python,
+  typescript}` parent/relative-import tests on `windows-latest`.
+- Release workflow npm job: the version-sync step read
+  `process.env.VERSION` without exporting it into the `node` process,
+  so `npm publish` saw an empty version and failed `EBADSEMVER`. The
+  variable is now passed inline to `node` (v1.0.2 never reached npm).
+
 ## [1.0.2] — 2026-05-18
 
 ### Fixed
