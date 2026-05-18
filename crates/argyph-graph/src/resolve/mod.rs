@@ -20,6 +20,10 @@ pub struct ModuleTarget {
 }
 
 pub(crate) fn normalize_path(path: &str) -> String {
+    // Resolvers build candidate paths via `Utf8PathBuf::push`, which uses the
+    // platform separator (`\` on Windows). Normalize to `/` so module paths
+    // are stable across platforms and match the `/`-normalized graph nodes.
+    let path = path.replace('\\', "/");
     let is_absolute = path.starts_with('/');
     let parts: Vec<&str> = path.split('/').filter(|p| !p.is_empty()).collect();
     let mut out: Vec<&str> = Vec::new();
