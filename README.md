@@ -7,7 +7,7 @@
 [![CI](https://github.com/Ezzy1630/argyph/actions/workflows/ci.yml/badge.svg)](https://github.com/Ezzy1630/argyph/actions/workflows/ci.yml)
 [![crates.io](https://img.shields.io/crates/v/argyph.svg?logo=rust&logoColor=white)](https://crates.io/crates/argyph)
 [![npm](https://img.shields.io/npm/v/argyph.svg?logo=npm)](https://www.npmjs.com/package/argyph)
-[![Downloads](https://img.shields.io/crates/d/argyph.svg?logo=rust&logoColor=white&label=downloads)](https://crates.io/crates/argyph)
+[![Downloads](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FEzzy1630%2Fargyph%2Fmain%2Fbadges%2Fdownloads.json&cacheSeconds=3600)](https://github.com/Ezzy1630/argyph/releases)
 [![Homebrew](https://img.shields.io/badge/homebrew-Ezzy1630%2Fargyph-F9A03C?logo=homebrew&logoColor=white)](https://github.com/Ezzy1630/homebrew-argyph)
 
 **Stop wiring six MCP servers.** Argyph is one local binary that gives your AI coding agent grep, a symbol graph, and semantic search over any repo — indexed in under a second, with no API key.
